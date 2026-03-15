@@ -114,6 +114,18 @@ Contributions are welcome! Feel free to open an [issue](https://github.com/ancro
 
 To report a security vulnerability, please use [GitHub's private vulnerability reporting](https://github.com/ancroo/ancroo-web/security/advisories/new) instead of opening a public issue.
 
+## Acknowledgments
+
+This project is built with the following open-source software:
+
+| Project | Purpose | License |
+|---------|---------|---------|
+| [Preact](https://preactjs.com/) | UI framework | MIT |
+| [Vite](https://vite.dev/) | Build tool | MIT |
+| [CRXJS](https://crxjs.dev/vite-plugin/) | Vite plugin for browser extensions | MIT |
+| [Tailwind CSS](https://tailwindcss.com/) | CSS framework | MIT |
+| [TypeScript](https://www.typescriptlang.org/) | Language | Apache-2.0 |
+
 ## License
 
 MIT — see [LICENSE](LICENSE). The Ancroo name is not covered by this license and remains the property of the author.
