@@ -139,12 +139,19 @@ function clearRecordingState(): void {
   delete (globalThis as Record<string, unknown>)[ANCROO_KEY];
 }
 
-// Validate selectors to prevent targeting arbitrary DOM elements.
-// Only allow selectors that target form-related elements.
-const ALLOWED_SELECTOR_RE =
-  /^(input|textarea|select|label|form|fieldset|option|optgroup|button|datalist|output)\b/i;
+// Sanity-check selectors. Workflows can target arbitrary form patterns on
+// arbitrary sites, so we don't whitelist tags/attributes — we only reject
+// selectors whose entire match would be a global/document-root anchor.
+// Compound selectors like "body input" remain allowed; only bare top-level
+// selectors are blocked.
+const BLOCKED_BARE_PARTS = new Set(["*", "html", "body", "head", ":root"]);
 function isAllowedSelector(selector: string): boolean {
-  return ALLOWED_SELECTOR_RE.test(selector.trimStart());
+  const parts = selector
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p !== "");
+  if (parts.length === 0) return false;
+  return parts.every((p) => !BLOCKED_BARE_PARTS.has(p));
 }
 
 // Listen for messages from the background script
