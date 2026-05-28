@@ -12,8 +12,7 @@ import type {
 import type {
   ExtensionMessage,
   SelectionResultMessage,
-  FormFieldsResultMessage,
-  PageHtmlResultMessage,
+  PageTextResultMessage,
   InsertResultMessage,
 } from "@/shared/messages";
 import { sendToTab } from "@/shared/tab-messaging";
@@ -177,18 +176,9 @@ export function App() {
           }
           break;
         }
-        case "form_fields":
-          if (recipe.form_fields?.length) {
-            const res = await sendToTab<FormFieldsResultMessage>(tabId, {
-              type: "GET_FORM_FIELDS",
-              fields: recipe.form_fields,
-            });
-            packet.fields = res?.fields ?? {};
-          }
-          break;
-        case "page_html": {
-          const page = await sendToTab<PageHtmlResultMessage>(tabId, { type: "GET_PAGE_HTML" });
-          packet.html = page?.html ?? "";
+        case "page_text": {
+          const page = await sendToTab<PageTextResultMessage>(tabId, { type: "GET_PAGE_TEXT" });
+          packet.page_text = page?.text ?? "";
           if (!packet.context) {
             packet.context = { url: page?.url ?? "", title: page?.title ?? "" };
           }
@@ -206,8 +196,6 @@ export function App() {
     action: string,
     resultText: string,
     tabId: number,
-    outputFields?: { name: string; selector: string }[],
-    metadata?: Record<string, unknown>,
   ) {
     switch (action) {
       case "replace_selection":
@@ -238,36 +226,6 @@ export function App() {
         }
         break;
       }
-      case "fill_fields":
-        try {
-          const resultData = JSON.parse(resultText);
-          if (!outputFields || outputFields.length === 0) {
-            console.warn("[ancroo] fill_fields action but no output_fields in recipe");
-            break;
-          }
-          const fieldsToSet: Record<string, { selector: string; value: string }> = {};
-          for (const field of outputFields) {
-            if (field.name in resultData) {
-              fieldsToSet[field.name] = {
-                selector: field.selector,
-                value: String(resultData[field.name]),
-              };
-            }
-          }
-          await sendToTab(tabId, {
-            type: "SET_FORM_FIELDS",
-            fields: fieldsToSet,
-          } as ExtensionMessage);
-          await sendToTab(tabId, {
-            type: "SHOW_TOAST",
-            text: "Fields updated",
-            variant: "success",
-            duration: 2000,
-          } as ExtensionMessage);
-        } catch (err) {
-          console.error("[ancroo] fill_fields parse error:", err);
-        }
-        break;
       case "insert_before": {
         const res = await sendToTab<InsertResultMessage>(tabId, { type: "INSERT_BEFORE", text: resultText });
         await sendToTab(tabId, {
@@ -288,31 +246,7 @@ export function App() {
         } as ExtensionMessage);
         break;
       }
-      case "download_file": {
-        const filename = (metadata?.filename as string) || "download.txt";
-        const mimeType = (metadata?.mime_type as string) || "text/plain";
-        try {
-          let dataUrl: string;
-          if (mimeType.startsWith("text/") || mimeType === "application/json") {
-            dataUrl = `data:${mimeType};charset=utf-8,${encodeURIComponent(resultText)}`;
-          } else {
-            dataUrl = `data:${mimeType};base64,${resultText}`;
-          }
-          await chrome.downloads.download({ url: dataUrl, filename, saveAs: true });
-          sendToTab(tabId, {
-            type: "SHOW_TOAST",
-            text: `Download: ${filename}`,
-            variant: "success",
-            duration: 3000,
-          } as ExtensionMessage).catch(() => {});
-        } catch (err) {
-          console.error("[ancroo] download_file failed:", err);
-          setError("Download failed");
-        }
-        break;
-      }
       case "side_panel_only":
-      case "notification":
         break;
     }
   }
@@ -395,13 +329,7 @@ export function App() {
           setResultWorkflowName(workflow.name);
         }
 
-        await applyAction(
-          action,
-          result.result.text,
-          tab.id,
-          workflow.recipe?.output_fields,
-          result.result.metadata,
-        );
+        await applyAction(action, result.result.text, tab.id);
       } else if (result.result && !result.result.success) {
         setError(result.result.error ?? `${workflow.name} failed`);
       } else if (result.result?.success && !result.result.text) {
@@ -663,30 +591,21 @@ export function App() {
 
                     const collect = workflow.recipe?.collect;
                     const inputLabel = collect
-                      ? collect.includes("audio")
-                        ? "audio"
-                        : collect.includes("file")
-                          ? "file"
-                          : collect.includes("manual_input")
-                            ? "manual"
-                            : collect.includes("text_selection")
-                              ? "selection"
-                              : collect.includes("page_html")
-                                ? "page"
-                                : collect.includes("form_fields")
-                                  ? "form"
-                                  : null
+                      ? collect.includes("manual_input")
+                        ? "manual"
+                        : collect.includes("page_text")
+                          ? "page"
+                          : collect.includes("text_selection")
+                            ? "selection"
+                            : null
                       : null;
                     const outputLabel: string | null = (() => {
                       switch (workflow.output_action) {
                         case "replace_selection": return "replace";
                         case "copy_to_clipboard": return "copy";
-                        case "notification": return "notify";
-                        case "fill_fields": return "fill";
                         case "insert_before": return "insert↑";
                         case "insert_after": return "insert↓";
                         case "side_panel_only": return "panel";
-                        case "download_file": return "download";
                         default: return null;
                       }
                     })();

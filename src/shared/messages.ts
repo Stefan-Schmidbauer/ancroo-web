@@ -12,6 +12,17 @@ export interface SelectionResultMessage {
   title: string;
 }
 
+export interface GetPageTextMessage {
+  type: "GET_PAGE_TEXT";
+}
+
+export interface PageTextResultMessage {
+  type: "PAGE_TEXT_RESULT";
+  text: string;
+  url: string;
+  title: string;
+}
+
 export interface InsertTextMessage {
   type: "INSERT_TEXT";
   text: string;
@@ -30,29 +41,6 @@ export interface InsertAfterMessage {
 export interface InsertResultMessage {
   type: "INSERT_RESULT";
   success: boolean;
-}
-
-export interface GetFormFieldsMessage {
-  type: "GET_FORM_FIELDS";
-  fields: { name: string; selector: string }[];
-}
-
-export interface FormFieldsResultMessage {
-  type: "FORM_FIELDS_RESULT";
-  fields: Record<string, string>;
-}
-
-export interface StartRecordingMessage {
-  type: "START_RECORDING";
-  workflowSlug: string;
-}
-
-export interface StopRecordingMessage {
-  type: "STOP_RECORDING";
-}
-
-export interface CancelRecordingMessage {
-  type: "CANCEL_RECORDING";
 }
 
 export interface ExecuteHotkeyWorkflowMessage {
@@ -74,29 +62,6 @@ export interface HideToastMessage {
   type: "HIDE_TOAST";
 }
 
-export interface GetPageHtmlMessage {
-  type: "GET_PAGE_HTML";
-}
-
-export interface PageHtmlResultMessage {
-  type: "PAGE_HTML_RESULT";
-  html: string;
-  url: string;
-  title: string;
-}
-
-export interface SetFormFieldsMessage {
-  type: "SET_FORM_FIELDS";
-  fields: Record<string, { selector: string; value: string }>;
-}
-
-export interface SetFormFieldsResultMessage {
-  type: "SET_FORM_FIELDS_RESULT";
-  success: boolean;
-  set_count: number;
-  errors: string[];
-}
-
 export interface WriteClipboardMessage {
   type: "WRITE_CLIPBOARD";
   text: string;
@@ -110,21 +75,14 @@ export interface WriteClipboardResultMessage {
 export type ExtensionMessage =
   | GetSelectionMessage
   | SelectionResultMessage
-  | GetPageHtmlMessage
-  | PageHtmlResultMessage
+  | GetPageTextMessage
+  | PageTextResultMessage
   | InsertTextMessage
   | InsertBeforeMessage
   | InsertAfterMessage
   | InsertResultMessage
-  | GetFormFieldsMessage
-  | FormFieldsResultMessage
-  | StartRecordingMessage
-  | StopRecordingMessage
-  | CancelRecordingMessage
   | ExecuteHotkeyWorkflowMessage
   | ShowToastMessage
   | HideToastMessage
-  | SetFormFieldsMessage
-  | SetFormFieldsResultMessage
   | WriteClipboardMessage
   | WriteClipboardResultMessage;

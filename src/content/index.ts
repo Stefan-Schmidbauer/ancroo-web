@@ -119,41 +119,6 @@ function hotkeyHandler(event: KeyboardEvent): void {
 }
 document.addEventListener("keydown", hotkeyHandler, true);
 
-// Typed state for audio recording, shared between executeScript calls
-// and this content script (both run in the same isolated world).
-interface AncrooRecordingState {
-  recorder?: MediaRecorder;
-  stream?: MediaStream;
-  chunks?: Blob[];
-  mimeType?: string;
-}
-
-// Namespaced global to avoid polluting globalThis with multiple properties
-const ANCROO_KEY = "__ancrooRecording";
-
-function getRecordingState(): AncrooRecordingState {
-  return ((globalThis as Record<string, unknown>)[ANCROO_KEY] as AncrooRecordingState) ?? {};
-}
-
-function clearRecordingState(): void {
-  delete (globalThis as Record<string, unknown>)[ANCROO_KEY];
-}
-
-// Sanity-check selectors. Workflows can target arbitrary form patterns on
-// arbitrary sites, so we don't whitelist tags/attributes — we only reject
-// selectors whose entire match would be a global/document-root anchor.
-// Compound selectors like "body input" remain allowed; only bare top-level
-// selectors are blocked.
-const BLOCKED_BARE_PARTS = new Set(["*", "html", "body", "head", ":root"]);
-function isAllowedSelector(selector: string): boolean {
-  const parts = selector
-    .split(",")
-    .map((p) => p.trim())
-    .filter((p) => p !== "");
-  if (parts.length === 0) return false;
-  return parts.every((p) => !BLOCKED_BARE_PARTS.has(p));
-}
-
 // Listen for messages from the background script
 chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendResponse) => {
   // Only accept messages from our own extension
@@ -191,10 +156,10 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     return true;
   }
 
-  if (message.type === "GET_PAGE_HTML") {
+  if (message.type === "GET_PAGE_TEXT") {
     sendResponse({
-      type: "PAGE_HTML_RESULT",
-      html: document.documentElement.outerHTML,
+      type: "PAGE_TEXT_RESULT",
+      text: document.body.innerText,
       url: window.location.href,
       title: document.title,
     });
@@ -222,132 +187,6 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     smartInsertAfter(message.text).then((success) => {
       sendResponse({ type: "INSERT_RESULT", success });
     });
-    return true;
-  }
-
-  if (message.type === "GET_FORM_FIELDS") {
-    const result: Record<string, string> = {};
-    for (const field of message.fields) {
-      try {
-        if (!isAllowedSelector(field.selector)) continue;
-        const el = document.querySelector(field.selector);
-        if (el) {
-          if (
-            el instanceof HTMLInputElement &&
-            (el.type === "checkbox" || el.type === "radio")
-          ) {
-            // Collect all checked values for checkbox/radio groups with the same name
-            const name = el.getAttribute("name");
-            if (name) {
-              const checked = document.querySelectorAll(
-                `input[name='${name}']:checked`,
-              );
-              result[field.name] = Array.from(checked)
-                .map((cb) => (cb as HTMLInputElement).value)
-                .join(", ");
-            } else {
-              result[field.name] = el.checked ? el.value : "";
-            }
-          } else if (
-            el instanceof HTMLInputElement ||
-            el instanceof HTMLTextAreaElement ||
-            el instanceof HTMLSelectElement
-          ) {
-            result[field.name] = el.value;
-          } else {
-            result[field.name] = el.textContent ?? "";
-          }
-        }
-      } catch {
-        continue;
-      }
-    }
-    sendResponse({ type: "FORM_FIELDS_RESULT", fields: result });
-    return true;
-  }
-
-  if (message.type === "SET_FORM_FIELDS") {
-    const errors: string[] = [];
-    let setCount = 0;
-    for (const [key, { selector, value }] of Object.entries(message.fields)) {
-      try {
-        if (!isAllowedSelector(selector)) {
-          errors.push(`Blocked selector for "${key}": ${selector}`);
-          continue;
-        }
-        const el = document.querySelector(selector);
-        if (!el) {
-          errors.push(`No element found for "${key}" (${selector})`);
-          continue;
-        }
-        if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-          const proto =
-            el instanceof HTMLTextAreaElement
-              ? HTMLTextAreaElement.prototype
-              : HTMLInputElement.prototype;
-          const nativeSetter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
-          if (nativeSetter) {
-            nativeSetter.call(el, value);
-          } else {
-            el.value = value;
-          }
-          el.dispatchEvent(new Event("input", { bubbles: true }));
-          el.dispatchEvent(new Event("change", { bubbles: true }));
-          setCount++;
-        } else if (el instanceof HTMLSelectElement) {
-          el.value = value;
-          el.dispatchEvent(new Event("change", { bubbles: true }));
-          setCount++;
-        } else {
-          el.textContent = value;
-          setCount++;
-        }
-      } catch (err) {
-        errors.push(`Error setting "${key}": ${err}`);
-      }
-    }
-    sendResponse({
-      type: "SET_FORM_FIELDS_RESULT",
-      success: errors.length === 0,
-      set_count: setCount,
-      errors,
-    });
-    return true;
-  }
-
-  // Recording is started via chrome.scripting.executeScript from the side panel,
-  // which stores MediaRecorder state in globalThis.__ancrooRecording (isolated world shared).
-  if (message.type === "STOP_RECORDING") {
-    const state = getRecordingState();
-
-    if (!state.recorder || state.recorder.state === "inactive") {
-      sendResponse({ success: false, error: "Not recording" });
-      return true;
-    }
-
-    const { recorder, stream, chunks, mimeType } = state;
-    const resolvedMimeType = mimeType ?? "audio/webm";
-
-    recorder.onstop = async () => {
-      const blob = new Blob(chunks ?? [], { type: resolvedMimeType });
-      const arrayBuffer = await blob.arrayBuffer();
-      stream?.getTracks().forEach((t) => t.stop());
-      clearRecordingState();
-      sendResponse({ success: true, audioData: arrayBuffer, mimeType: resolvedMimeType });
-    };
-
-    recorder.stop();
-    return true; // keep channel open for async sendResponse
-  }
-
-  if (message.type === "CANCEL_RECORDING") {
-    const state = getRecordingState();
-    if (state.recorder && state.recorder.state !== "inactive") {
-      state.recorder.stop();
-    }
-    state.stream?.getTracks().forEach((t) => t.stop());
-    clearRecordingState();
-    sendResponse({ success: true });
     return true;
   }
 
@@ -421,7 +260,7 @@ function showToast(
   const colors = { processing: "#3b82f6", success: "#22c55e", error: "#ef4444" };
   el.style.background = colors[variant];
 
-  const icons = { processing: "\u23F3", success: "\u2714", error: "\u2718" };
+  const icons = { processing: "⏳", success: "✔", error: "✘" };
   el.textContent = `${icons[variant]}  ${text}`;
 
   // Force reflow then fade in

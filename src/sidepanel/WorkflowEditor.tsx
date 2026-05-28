@@ -9,6 +9,7 @@ import { fetchModels, type ModelInfo } from "@/shared/llm/models";
 const INPUT_SOURCES: { value: CollectionRecipe["collect"][number]; label: string }[] = [
   { value: "text_selection", label: "Text Selection" },
   { value: "manual_input", label: "Manual Input" },
+  { value: "page_text", label: "Page Text" },
 ];
 
 const OUTPUT_ACTIONS = [
@@ -182,7 +183,9 @@ export function WorkflowEditor({ workflow, providers, categories = DEFAULT_CATEG
               placeholder={"Summarize the following text:\n\n{text}"}
             />
             <p class="text-xs text-gray-400 mt-0.5">
-              Variables: {"{text}"} {"{url}"} {"{title}"}
+              {inputSource === "text_selection" && <>Variables: {"{text}"} {"{html}"} {"{url}"} {"{title}"}</>}
+              {inputSource === "manual_input" && <>Variables: {"{text}"} {"{url}"} {"{title}"}</>}
+              {inputSource === "page_text" && <>Variables: {"{page_text}"} {"{url}"} {"{title}"}</>}
             </p>
           </div>
           <div>

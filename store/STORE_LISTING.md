@@ -20,7 +20,7 @@ POINT. PROMPT. DONE.
 - Side panel UI — click the extension icon or press Alt+Shift+Y to open
 - Text selection — select text on any page, right-click "Run with Ancroo", get AI results
 - Hotkeys — trigger actions instantly from any page
-- Flexible input — feed selected text or manual input into your prompt
+- Flexible input — feed selected text (plain or HTML), manual input, or the full page text into your prompt
 - Output actions — replace selected text, copy to clipboard, insert before/after, or show in panel
 - Execution history — last 50 results stored locally
 - Workflow categories — organise actions into named categories with icons; collapsible groups in the side panel

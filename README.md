@@ -17,7 +17,7 @@ Manifest V3 browser extension built with Preact and TypeScript. Calls LLM provid
 ## Features
 
 - **Side panel UI** — browse and trigger actions from a side panel (`Alt+Shift+Y` or click the extension icon)
-- **Flexible input** — feed selected text or manual input into your prompt
+- **Flexible input** — feed selected text (plain or HTML), manual input, or the full page text into your prompt
 - **Hotkeys** — keyboard shortcuts trigger actions instantly from any page
 - **Context menu** — select text on any page, right-click "Run with Ancroo", and get AI results
 - **Output actions** — results can replace selected text, copy to clipboard, insert before/after, or show in panel

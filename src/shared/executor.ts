@@ -92,7 +92,7 @@ function errorResult(executionId: string, start: number, error: string): Execute
     status: "error",
     result: {
       text: null,
-      action: "notification",
+      action: "side_panel_only",
       success: false,
       error,
       metadata: { mode: "direct" },

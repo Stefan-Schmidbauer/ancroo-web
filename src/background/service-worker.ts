@@ -144,7 +144,7 @@ async function handleHotkeyExecution(workflowSlug: string, tab?: chrome.tabs.Tab
 
   const collectSources = Array.isArray(workflow.recipe?.collect) ? workflow.recipe.collect : [];
   const needsManual = collectSources.includes("manual_input");
-  const needsComplexInput = collectSources.includes("form_fields");
+  const needsComplexInput = false;
 
   // Manual/complex workflows need the side panel — store pending state.
   // The side panel was already opened synchronously in the onMessage handler.

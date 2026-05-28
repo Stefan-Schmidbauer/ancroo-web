@@ -1,31 +1,13 @@
-/** File upload configuration in a recipe. */
-export interface FileConfig {
-  accept: string;
-  max_size_mb: number;
-  label: string;
-  required: boolean;
-}
-
-/** Collection recipe — instructions from the server on what data to collect. */
+/** Collection recipe — instructions on what data to collect. */
 export interface CollectionRecipe {
-  collect: (
-    | "text_selection"
-    | "form_fields"
-    | "page_html"
-    | "file"
-    | "audio"
-    | "manual_input"
-  )[];
-  form_fields?: { name: string; selector: string }[];
-  output_fields?: { name: string; selector: string }[];
-  file_config?: FileConfig;
+  collect: ("text_selection" | "manual_input" | "page_text")[];
 }
 
-/** Data packet sent to the server when executing a workflow. */
+/** Data packet passed to the LLM executor. */
 export interface InputDataPacket {
   text?: string;
   html?: string;
-  fields?: Record<string, string>;
+  page_text?: string;
   context?: { url: string; title: string };
 }
 
@@ -82,13 +64,10 @@ export interface ExecutionResult {
   action:
     | "replace_selection"
     | "copy_to_clipboard"
-    | "notification"
-    | "fill_fields"
     | "none"
     | "insert_before"
     | "insert_after"
-    | "side_panel_only"
-    | "download_file";
+    | "side_panel_only";
   success: boolean;
   error: string | null;
   metadata: Record<string, unknown>;

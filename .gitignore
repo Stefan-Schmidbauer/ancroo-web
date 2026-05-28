@@ -27,3 +27,6 @@ store/*.html
 
 # Claude Code
 .claude/
+
+# Local notes (not for public repo)
+notes/

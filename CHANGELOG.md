@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-05-28
+
+### Added
+
+- Page Text input source — feed the full visible page text into a prompt via `{page_text}` variable
+- Context-aware variable hints in workflow editor — shown variables adapt to selected input source
+
+### Changed
+
+- `{text}` and `{html}` variables now documented as selection-specific in the editor
+- Error results now use `side_panel_only` action consistently
+- Store listing and README updated to reflect new input sources
+
+### Removed
+
+- Form fields collect source and all related selector logic
+- Audio recording and file upload collect sources
+- `GET_PAGE_HTML` / `PAGE_HTML_RESULT` messages replaced by `GET_PAGE_TEXT` / `PAGE_TEXT_RESULT`
+- `fill_fields`, `notification`, `download_file` output actions
+- `{fields}` template variable
+
 ## [0.4.0] — 2026-05-28
 
 ### Added
