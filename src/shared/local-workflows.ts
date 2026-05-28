@@ -1,4 +1,4 @@
-/** CRUD operations for locally stored workflows (Direct Mode). */
+/** CRUD operations for locally stored workflows. */
 
 import type { LocalWorkflow, CollectionRecipe } from "./types";
 

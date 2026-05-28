@@ -1,9 +1,7 @@
-/** Unified workflow executor — dispatches to backend or direct LLM based on connection mode. */
+/** Workflow executor — calls LLM directly (no backend). */
 
 import type { InputDataPacket, ExecuteWorkflowResponse, LocalWorkflow, Workflow } from "./types";
-import { getConnectionMode } from "./connection-mode";
 import { getSettings } from "./settings";
-import { executeWorkflow as backendExecute } from "./api-client";
 import { getLocalWorkflow } from "./local-workflows";
 import { renderTemplate } from "./template-renderer";
 import { callLLM } from "./llm";
@@ -11,30 +9,16 @@ import { callLLM } from "./llm";
 /** Timeout for direct LLM calls (60 seconds). */
 const DIRECT_LLM_TIMEOUT_MS = 60_000;
 
-/** Execute a workflow, dispatching to backend API or direct LLM call based on mode. */
+/** Execute a workflow directly against an LLM provider. */
 export async function executeWorkflowUnified(
   workflow: Workflow,
-  inputData: InputDataPacket,
-): Promise<ExecuteWorkflowResponse> {
-  const mode = await getConnectionMode();
-
-  if (mode === "backend") {
-    return backendExecute(workflow.slug, inputData);
-  }
-
-  return executeDirectLLM(workflow as LocalWorkflow, inputData);
-}
-
-/** Execute a workflow directly against an LLM provider (no backend). */
-async function executeDirectLLM(
-  workflow: LocalWorkflow,
   inputData: InputDataPacket,
 ): Promise<ExecuteWorkflowResponse> {
   const start = performance.now();
   const executionId = crypto.randomUUID();
 
   // If called with a plain Workflow (e.g. from cache), look up the full LocalWorkflow
-  let local = workflow;
+  let local = workflow as LocalWorkflow;
   if (!local.prompt_template) {
     const found = await getLocalWorkflow(workflow.slug);
     if (!found) {

@@ -1,89 +1,66 @@
 import { useState, useEffect } from "preact/hooks";
-import { executeWorkflowWithFile, getCurrentUser } from "@/shared/api-client";
-import { getSettings, isSetupComplete } from "@/shared/settings";
-import {
-  login as authLogin,
-  logout as authLogout,
-  isLoggedIn,
-  isAuthRequired,
-} from "@/shared/auth";
-import { getConnectionMode } from "@/shared/connection-mode";
+import { getSettings } from "@/shared/settings";
+import { isSetupComplete } from "@/shared/settings";
 import { executeWorkflowUnified } from "@/shared/executor";
 import { listWorkflowsUnified } from "@/shared/workflow-provider";
 import type {
   Workflow,
-  User,
   HistoryEntry,
   CollectionRecipe,
   InputDataPacket,
-  FileConfig,
 } from "@/shared/types";
 import type {
   ExtensionMessage,
   SelectionResultMessage,
   FormFieldsResultMessage,
   PageHtmlResultMessage,
+  InsertResultMessage,
 } from "@/shared/messages";
 import { sendToTab } from "@/shared/tab-messaging";
 import { HOTKEY_STORAGE_KEY } from "@/shared/hotkeys";
 import {
-  needsFileInput,
-  needsAudioInput,
   needsManualInput,
-  formatFileSize,
   friendlyError,
   categoryIcon,
 } from "./utils";
-import { RecordingArea } from "./RecordingArea";
 import { HistoryItem } from "./HistoryItem";
-import { FileUploadArea } from "./FileUploadArea";
-import { UploadProgressDisplay } from "./UploadProgressDisplay";
 import { SetupScreen } from "./SetupScreen";
 import { AboutPanel } from "./AboutPanel";
 import { WorkflowEditor } from "./WorkflowEditor";
-import { DirectModeSettings } from "./DirectModeSettings";
+import { Settings } from "./Settings";
 import type { LocalWorkflow } from "@/shared/types";
-import type { ConnectionMode } from "@/shared/settings";
-import { saveLocalWorkflow, deleteLocalWorkflow } from "@/shared/local-workflows";
-import { saveSettings } from "@/shared/settings";
+import type { LLMProviderConfig } from "@/shared/settings";
+import { listLocalWorkflows, saveLocalWorkflow, deleteLocalWorkflow } from "@/shared/local-workflows";
+import {
+  listCategories,
+  saveCategory,
+  deleteCategory,
+  DEFAULT_CATEGORIES,
+} from "@/shared/local-categories";
+import type { Category } from "@/shared/local-categories";
+import { CategoryManager } from "./CategoryManager";
 
 export function App() {
   const [setupDone, setSetupDone] = useState<boolean | null>(null);
-  const [authEnabled, setAuthEnabled] = useState(true);
-  const [needsLogin, setNeedsLogin] = useState(false);
-  const [loggingIn, setLoggingIn] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [executing, setExecuting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // File upload state
-  const [pendingWorkflow, setPendingWorkflow] = useState<Workflow | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const [processing, setProcessing] = useState(false);
-  const [fileError, setFileError] = useState<string | null>(null);
-
-  // Audio recording state
-  const [autoStartRecording, setAutoStartRecording] = useState(false);
-  const [stopRecordingSignal, setStopRecordingSignal] = useState(0);
-  const [micDeviceId, setMicDeviceId] = useState<string | undefined>();
-
   // Manual input state
+  const [pendingWorkflow, setPendingWorkflow] = useState<Workflow | null>(null);
   const [manualInputText, setManualInputText] = useState("");
 
   // About panel state
   const [showAbout, setShowAbout] = useState(false);
 
-  // Direct mode state
-  const [connectionMode, setConnectionMode] = useState<ConnectionMode>("backend");
+  // Settings / editor state
   const [editingWorkflow, setEditingWorkflow] = useState<LocalWorkflow | null | "new">(null);
-  const [showDirectSettings, setShowDirectSettings] = useState(false);
-  const [llmProviders, setLlmProviders] = useState<import("@/shared/settings").LLMProviderConfig[]>(
-    [],
-  );
+  const [showSettings, setShowSettings] = useState(false);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [llmProviders, setLlmProviders] = useState<LLMProviderConfig[]>([]);
+  const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
 
   // Result display state
   const [resultText, setResultText] = useState<string | null>(null);
@@ -116,32 +93,6 @@ export function App() {
     return () => chrome.storage.onChanged.removeListener(listener);
   }, []);
 
-  // Listen for START_RECORDING messages from background script (hotkey)
-  useEffect(() => {
-    const handler = (message: ExtensionMessage, sender: chrome.runtime.MessageSender) => {
-      // Only accept messages from our own extension
-      if (sender.id !== chrome.runtime.id) return;
-
-      if (message.type === "START_RECORDING") {
-        const workflow = workflows.find((w) => w.slug === message.workflowSlug);
-        if (workflow && needsAudioInput(workflow)) {
-          if (pendingWorkflow?.slug === workflow.slug) {
-            // Already recording this workflow — toggle: stop it
-            setStopRecordingSignal((n) => n + 1);
-            return;
-          }
-          setPendingWorkflow(workflow);
-          setSelectedFile(null);
-          setFileError(null);
-          setAutoStartRecording(true);
-          setStopRecordingSignal(0);
-        }
-      }
-    };
-    chrome.runtime.onMessage.addListener(handler);
-    return () => chrome.runtime.onMessage.removeListener(handler);
-  }, [workflows, pendingWorkflow]);
-
   async function init() {
     const done = await isSetupComplete();
     setSetupDone(done);
@@ -154,83 +105,29 @@ export function App() {
   async function loadData() {
     try {
       setError(null);
-      setNeedsLogin(false);
 
       const settings = await getSettings();
-      const mode = await getConnectionMode();
-      setConnectionMode(mode);
+      setLlmProviders(settings.llm_providers);
+      setCategories(await listCategories());
 
-      // In backend mode, check auth requirements
-      if (mode === "backend") {
-        const authRequired = await isAuthRequired(settings.backend_url);
-        setAuthEnabled(authRequired);
-
-        if (authRequired) {
-          const loggedIn = await isLoggedIn();
-          if (!loggedIn) {
-            setNeedsLogin(true);
-            return;
-          }
-        }
-      } else {
-        setAuthEnabled(false);
-      }
-
-      const [userInfo, workflowList, stored, session] = await Promise.all([
-        mode === "backend" ? getCurrentUser() : Promise.resolve(null),
+      const [workflowList, stored, session] = await Promise.all([
         listWorkflowsUnified(),
         chrome.storage.local.get("history"),
-        chrome.storage.session.get([
-          "pendingRecording",
-          "pendingFileWorkflow",
-          "pendingWorkflowSlug",
-          "pendingResult",
-        ]),
+        chrome.storage.session.get(["pendingWorkflowSlug", "pendingResult"]),
       ]);
-      setUser(userInfo);
+
       setWorkflows(workflowList);
       setHistory((stored.history as HistoryEntry[] | undefined) ?? []);
-      setMicDeviceId(settings.microphone_device_id);
-      if (mode === "direct") setLlmProviders(settings.llm_providers);
 
       // Cache workflows for background hotkey execution and refresh bindings
       await chrome.storage.session.set({ cachedWorkflows: workflowList });
       chrome.runtime.sendMessage({ type: "REFRESH_HOTKEYS" }).catch(() => {});
-
-      // Check if a recording was triggered via hotkey before the panel was ready
-      if (session.pendingRecording) {
-        await chrome.storage.session.remove("pendingRecording");
-        const target = workflowList.find((w) => w.slug === session.pendingRecording);
-        if (
-          target &&
-          Array.isArray(target.recipe?.collect) &&
-          target.recipe.collect.includes("audio")
-        ) {
-          setPendingWorkflow(target);
-          setAutoStartRecording(true);
-        }
-      }
-
-      // Check if a file workflow was triggered via hotkey
-      if (session.pendingFileWorkflow) {
-        await chrome.storage.session.remove("pendingFileWorkflow");
-        const target = workflowList.find((w) => w.slug === session.pendingFileWorkflow);
-        if (
-          target &&
-          Array.isArray(target.recipe?.collect) &&
-          target.recipe.collect.includes("file")
-        ) {
-          setPendingWorkflow(target);
-        }
-      }
 
       // Check if a complex workflow was triggered via hotkey (needs side panel collection)
       if (session.pendingWorkflowSlug) {
         await chrome.storage.session.remove("pendingWorkflowSlug");
         const target = workflowList.find((w) => w.slug === session.pendingWorkflowSlug);
         if (target) {
-          // Execute the workflow through the normal side panel flow
-          // Use setTimeout to avoid calling setState during render
           setTimeout(() => handleExecute(target), 0);
         }
       }
@@ -243,38 +140,24 @@ export function App() {
         setResultWorkflowName(pending.workflowName);
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Connection failed";
-      // 401 → tokens expired or revoked, need re-login
-      if (msg.includes("Not logged in") || msg.includes("401")) {
-        await authLogout();
-        setNeedsLogin(true);
-      } else {
-        setError(friendlyError(msg));
-      }
+      const msg = e instanceof Error ? e.message : "Failed to load";
+      setError(friendlyError(msg));
     }
   }
 
-  async function handleLogin() {
-    setLoggingIn(true);
-    setError(null);
-    try {
-      const settings = await getSettings();
-      await authLogin(settings.backend_url);
-      setNeedsLogin(false);
-      await loadData();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Login failed");
-    } finally {
-      setLoggingIn(false);
-    }
+  async function handleSaveCategory(cat: Category) {
+    await saveCategory(cat);
+    setCategories(await listCategories());
   }
 
-  async function handleLogout() {
-    await authLogout();
-    await chrome.storage.session.remove([HOTKEY_STORAGE_KEY, "cachedWorkflows"]);
-    setUser(null);
-    setWorkflows([]);
-    setNeedsLogin(true);
+  async function handleDeleteCategory(value: string) {
+    const all = await listLocalWorkflows();
+    for (const w of all.filter((w) => w.category === value)) {
+      await saveLocalWorkflow({ ...w, category: null, category_icon: null });
+    }
+    await deleteCategory(value);
+    setCategories(await listCategories());
+    await loadData();
   }
 
   async function collectInputData(
@@ -295,13 +178,6 @@ export function App() {
           }
           break;
         }
-        case "clipboard":
-          try {
-            packet.clipboard = await navigator.clipboard.readText();
-          } catch {
-            packet.clipboard = "";
-          }
-          break;
         case "form_fields":
           if (recipe.form_fields?.length) {
             const res = await sendToTab<FormFieldsResultMessage>(tabId, {
@@ -311,16 +187,6 @@ export function App() {
             packet.fields = res?.fields ?? {};
           }
           break;
-        case "page_context": {
-          if (!packet.context) {
-            const ctx = await sendToTab<SelectionResultMessage>(tabId, { type: "GET_SELECTION" });
-            packet.context = {
-              url: ctx?.url ?? "",
-              title: ctx?.title ?? "",
-            };
-          }
-          break;
-        }
         case "page_html": {
           const page = await sendToTab<PageHtmlResultMessage>(tabId, { type: "GET_PAGE_HTML" });
           packet.html = page?.html ?? "";
@@ -331,10 +197,6 @@ export function App() {
         }
         case "manual_input":
           packet.text = manualInputText;
-          break;
-        case "file":
-        case "audio":
-          // Handled separately via file upload / recording UI
           break;
       }
     }
@@ -350,34 +212,33 @@ export function App() {
   ) {
     switch (action) {
       case "replace_selection":
-      case "insert_text":
-        await sendToTab(tabId, {
-          type: "INSERT_TEXT",
-          text: resultText,
-        });
+      case "insert_text": {
+        const res = await sendToTab<InsertResultMessage>(tabId, { type: "INSERT_TEXT", text: resultText });
         await sendToTab(tabId, {
           type: "SHOW_TOAST",
-          text: "Text inserted",
-          variant: "success",
-          duration: 2000,
+          text: res?.success ? "Text inserted" : "Could not insert text",
+          variant: res?.success ? "success" : "error",
+          duration: res?.success ? 2000 : 4000,
         } as ExtensionMessage);
         break;
+      }
       case "clipboard":
-      case "copy_to_clipboard":
+      case "copy_to_clipboard": {
         try {
           await navigator.clipboard.writeText(resultText);
-          await sendToTab(tabId, {
-            type: "SHOW_TOAST",
-            text: "Copied to clipboard",
-            variant: "success",
-            duration: 2000,
-          } as ExtensionMessage);
-        } catch (err) {
-          console.error("[ancroo] Clipboard write failed:", err);
-          // Show result in panel as fallback — never replace selection
+          if (tabId) {
+            await sendToTab(tabId, {
+              type: "SHOW_TOAST",
+              text: "Copied to clipboard",
+              variant: "success",
+              duration: 2000,
+            } as ExtensionMessage);
+          }
+        } catch {
           setResultText(resultText);
         }
         break;
+      }
       case "fill_fields":
         try {
           const resultData = JSON.parse(resultText);
@@ -408,36 +269,30 @@ export function App() {
           console.error("[ancroo] fill_fields parse error:", err);
         }
         break;
-      case "insert_before":
-        await sendToTab(tabId, {
-          type: "INSERT_BEFORE",
-          text: resultText,
-        });
+      case "insert_before": {
+        const res = await sendToTab<InsertResultMessage>(tabId, { type: "INSERT_BEFORE", text: resultText });
         await sendToTab(tabId, {
           type: "SHOW_TOAST",
-          text: "Text inserted before selection",
-          variant: "success",
-          duration: 2000,
+          text: res?.success ? "Text inserted before selection" : "Could not insert text",
+          variant: res?.success ? "success" : "error",
+          duration: res?.success ? 2000 : 4000,
         } as ExtensionMessage);
         break;
-      case "insert_after":
-        await sendToTab(tabId, {
-          type: "INSERT_AFTER",
-          text: resultText,
-        });
+      }
+      case "insert_after": {
+        const res = await sendToTab<InsertResultMessage>(tabId, { type: "INSERT_AFTER", text: resultText });
         await sendToTab(tabId, {
           type: "SHOW_TOAST",
-          text: "Text inserted after selection",
-          variant: "success",
-          duration: 2000,
+          text: res?.success ? "Text inserted after selection" : "Could not insert text",
+          variant: res?.success ? "success" : "error",
+          duration: res?.success ? 2000 : 4000,
         } as ExtensionMessage);
         break;
+      }
       case "download_file": {
         const filename = (metadata?.filename as string) || "download.txt";
         const mimeType = (metadata?.mime_type as string) || "text/plain";
         try {
-          // Use a data URL instead of blob URL to avoid revocation timing issues
-          // with saveAs dialogs (blob gets revoked before user picks a location).
           let dataUrl: string;
           if (mimeType.startsWith("text/") || mimeType === "application/json") {
             dataUrl = `data:${mimeType};charset=utf-8,${encodeURIComponent(resultText)}`;
@@ -458,68 +313,23 @@ export function App() {
         break;
       }
       case "side_panel_only":
-        // Only shown in-panel, no page action
-        break;
       case "notification":
-        // Shown in-panel via result display
         break;
     }
-  }
-
-  function validateFile(file: File, config: FileConfig): string | null {
-    if (file.size > config.max_size_mb * 1024 * 1024) {
-      return `File too large: ${formatFileSize(file.size)} (max ${config.max_size_mb} MB)`;
-    }
-    if (config.accept && config.accept !== "*/*") {
-      const accepted = config.accept.split(",").map((s) => s.trim().toLowerCase());
-      const ext = "." + (file.name.split(".").pop()?.toLowerCase() ?? "");
-      if (!accepted.some((a) => ext === a || file.type === a)) {
-        return `File type not accepted. Allowed: ${config.accept}`;
-      }
-    }
-    return null;
-  }
-
-  function handleFileSelect(file: File, workflow: Workflow) {
-    const config = workflow.recipe?.file_config;
-    if (config) {
-      const err = validateFile(file, config);
-      if (err) {
-        setFileError(err);
-        return;
-      }
-    }
-    setFileError(null);
-    setSelectedFile(file);
   }
 
   async function handleExecute(workflow: Workflow) {
-    // If this workflow needs a file, audio, or manual input, show the appropriate input area
-    if (needsFileInput(workflow) || needsAudioInput(workflow) || needsManualInput(workflow)) {
-      if (pendingWorkflow?.slug === workflow.slug && !needsManualInput(workflow)) {
-        // Toggle off (but not for manual input — that submits via button)
-        setPendingWorkflow(null);
-        setSelectedFile(null);
-        setFileError(null);
-        setAutoStartRecording(false);
-      } else if (pendingWorkflow?.slug !== workflow.slug) {
+    if (needsManualInput(workflow)) {
+      if (pendingWorkflow?.slug === workflow.slug) {
+        // Toggle off via button click — manual submit goes through executeTextWorkflow
+      } else {
         setPendingWorkflow(workflow);
-        setSelectedFile(null);
-        setFileError(null);
-        setAutoStartRecording(false);
         setManualInputText("");
       }
       return;
     }
 
-    // Standard text-based execution
     await executeTextWorkflow(workflow);
-  }
-
-  function handleRecordingComplete(file: File, workflow: Workflow) {
-    setAutoStartRecording(false);
-    // Auto-submit: pass file directly to bypass async state update
-    handleExecuteWithFile(workflow, file);
   }
 
   async function executeTextWorkflow(workflow: Workflow) {
@@ -531,14 +341,13 @@ export function App() {
       });
       if (!tab?.id) return;
 
-      // Extensions cannot inject content scripts into restricted pages
       const tabUrl = tab.url ?? "";
       if (
         tabUrl.startsWith("chrome://") ||
         tabUrl.startsWith("chrome-extension://") ||
         tabUrl.startsWith("about:")
       ) {
-        setError("Cannot run workflows on this page. Please switch to a regular website tab.");
+        setError("Cannot run actions on this page. Please switch to a regular website tab.");
         return;
       }
 
@@ -579,9 +388,10 @@ export function App() {
           action !== "insert_text" &&
           action !== "insert_before" &&
           action !== "insert_after" &&
-          action !== "download_file"
+          action !== "download_file" &&
+          action !== "clipboard" &&
+          action !== "copy_to_clipboard"
         ) {
-          // Show result in panel for clipboard/notification/side_panel_only/fill_fields actions
           setResultText(result.result.text);
           setResultWorkflowName(workflow.name);
         }
@@ -603,84 +413,6 @@ export function App() {
       setError(friendlyError(err instanceof Error ? err.message : String(err)));
     } finally {
       setExecuting(null);
-    }
-  }
-
-  async function handleExecuteWithFile(workflow: Workflow, fileOverride?: File) {
-    const file = fileOverride ?? selectedFile;
-    if (!file) return;
-
-    setExecuting(workflow.slug);
-    setUploadProgress(0);
-    setProcessing(false);
-
-    try {
-      const [tab] = await chrome.tabs.query({
-        active: true,
-        currentWindow: true,
-      });
-
-      // Collect non-file input data
-      let inputData: InputDataPacket = {};
-      if (workflow.recipe && tab?.id) {
-        inputData = await collectInputData(workflow.recipe, tab.id);
-      }
-
-      const result = await executeWorkflowWithFile(workflow.slug, inputData, file, (percent) => {
-        setUploadProgress(percent);
-        if (percent >= 100) {
-          setProcessing(true);
-        }
-      });
-
-      // Add to history
-      const entry: HistoryEntry = {
-        id: result.execution_id,
-        workflow_slug: workflow.slug,
-        workflow_name: workflow.name,
-        input_preview: file.name,
-        output_preview: result.result?.text?.substring(0, 100) ?? "",
-        output_full: result.result?.text ?? undefined,
-        success: result.result?.success ?? false,
-        timestamp: Date.now(),
-      };
-      const newHistory = [entry, ...history].slice(0, 50);
-      setHistory(newHistory);
-      await chrome.storage.local.set({ history: newHistory });
-
-      // Show result
-      if (result.result?.success && result.result.text) {
-        const action = workflow.output_action ?? result.result.action ?? "none";
-
-        if (action !== "download_file") {
-          setResultText(result.result.text);
-          setResultWorkflowName(workflow.name);
-        }
-
-        // Also apply the configured action
-        if (tab?.id) {
-          await applyAction(
-            action,
-            result.result.text,
-            tab.id,
-            workflow.recipe?.output_fields,
-            result.result.metadata,
-          );
-        }
-      } else if (result.result?.error) {
-        setFileError(result.result.error);
-      }
-
-      // Clear file state
-      setPendingWorkflow(null);
-      setSelectedFile(null);
-    } catch (err) {
-      console.error("File execution failed:", err);
-      setFileError(friendlyError(err instanceof Error ? err.message : String(err)));
-    } finally {
-      setExecuting(null);
-      setUploadProgress(null);
-      setProcessing(false);
     }
   }
 
@@ -708,32 +440,6 @@ export function App() {
           loadData();
         }}
       />
-    );
-  }
-
-  // Login screen — shown when tokens are missing or expired
-  if (needsLogin) {
-    return (
-      <div class="flex flex-col items-center justify-center h-screen p-6 gap-4">
-        <h1 class="text-xl font-bold">Ancroo</h1>
-        <p class="text-sm text-gray-600 text-center">
-          Sign in to your Ancroo server to get started.
-        </p>
-        {error && <p class="text-red-600 text-center text-sm">{error}</p>}
-        <button
-          onClick={handleLogin}
-          disabled={loggingIn}
-          class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
-        >
-          {loggingIn ? "Signing in..." : "Sign in"}
-        </button>
-        <button
-          onClick={() => setSetupDone(false)}
-          class="text-xs text-gray-400 hover:text-gray-600"
-        >
-          Change server settings
-        </button>
-      </div>
     );
   }
 
@@ -765,12 +471,6 @@ export function App() {
         >
           Retry
         </button>
-        <button
-          onClick={() => setSetupDone(false)}
-          class="text-xs text-gray-400 hover:text-gray-600"
-        >
-          Change server settings
-        </button>
       </div>
     );
   }
@@ -780,13 +480,14 @@ export function App() {
     return <AboutPanel onClose={() => setShowAbout(false)} />;
   }
 
-  // Direct Mode: Workflow Editor
-  if (editingWorkflow !== null && connectionMode === "direct") {
+  // Workflow Editor
+  if (editingWorkflow !== null) {
     const wf = editingWorkflow === "new" ? null : editingWorkflow;
     return (
       <WorkflowEditor
         workflow={wf}
         providers={llmProviders}
+        categories={categories}
         onSave={async (saved) => {
           await saveLocalWorkflow(saved);
           setEditingWorkflow(null);
@@ -806,25 +507,37 @@ export function App() {
     );
   }
 
-  // Direct Mode: Settings
-  if (showDirectSettings && connectionMode === "direct") {
+  // Settings
+  if (showSettings) {
     return (
-      <DirectModeSettings
+      <Settings
         onClose={() => {
-          setShowDirectSettings(false);
+          setShowSettings(false);
           loadData();
-        }}
-        onSwitchToBackend={async () => {
-          const current = await getSettings();
-          await saveSettings({ ...current, connection_mode: "backend" });
-          setShowDirectSettings(false);
-          setSetupDone(false);
         }}
       />
     );
   }
 
-  // Result display — shown after successful file workflow execution
+  // Category Manager
+  if (showCategoryManager) {
+    const workflowCountByCategory = workflows.reduce<Record<string, number>>((acc, w) => {
+      const cat = w.category ?? "__uncategorized__";
+      acc[cat] = (acc[cat] ?? 0) + 1;
+      return acc;
+    }, {});
+    return (
+      <CategoryManager
+        categories={categories}
+        workflowCounts={workflowCountByCategory}
+        onSave={handleSaveCategory}
+        onDelete={handleDeleteCategory}
+        onClose={() => setShowCategoryManager(false)}
+      />
+    );
+  }
+
+  // Result display
   if (resultText !== null) {
     return (
       <div class="flex flex-col h-screen">
@@ -887,49 +600,15 @@ export function App() {
               <line x1="12" y1="8" x2="12.01" y2="8" />
             </svg>
           </button>
-          {user && (
-            <span class="text-xs text-gray-500">
-              {user.display_name && !/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(user.display_name)
-                ? user.display_name
-                : (user.email?.split("@")[0] ?? "User")}
-            </span>
-          )}
-          {authEnabled && (
-            <button onClick={handleLogout} class="text-xs text-gray-400 hover:text-gray-600">
-              Sign out
-            </button>
-          )}
+
           <button
-            onClick={() => loadData()}
-            class="text-gray-400 hover:text-gray-600"
-            title="Reload workflows"
+            onClick={() => setEditingWorkflow("new")}
+            class="text-xs text-blue-500 hover:text-blue-700"
           >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <polyline points="23 4 23 10 17 10" />
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-            </svg>
+            + New
           </button>
-          {connectionMode === "direct" && (
-            <button
-              onClick={() => setEditingWorkflow("new")}
-              class="text-xs text-blue-500 hover:text-blue-700"
-            >
-              + New
-            </button>
-          )}
           <button
-            onClick={() =>
-              connectionMode === "direct" ? setShowDirectSettings(true) : setSetupDone(false)
-            }
+            onClick={() => setShowSettings(true)}
             class="text-xs text-gray-400 hover:text-gray-600"
           >
             Settings
@@ -941,7 +620,7 @@ export function App() {
       <div class="flex-1 overflow-y-auto p-3">
         {Object.entries(
           workflows.reduce<Record<string, Workflow[]>>((groups, w) => {
-            const cat = w.category ?? "other";
+            const cat = w.category ?? "__uncategorized__";
             (groups[cat] ??= []).push(w);
             return groups;
           }, {}),
@@ -949,26 +628,69 @@ export function App() {
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([category, categoryWorkflows]) => (
             <div key={category} class="mb-4">
-              <button
-                type="button"
-                onClick={() => toggleCategory(category)}
-                class="flex items-center gap-1 text-xs font-semibold text-gray-500 uppercase mb-2 hover:text-gray-700 cursor-pointer select-none w-full text-left"
-              >
-                <span
-                  class={`inline-block transition-transform duration-200 ${collapsedCategories.has(category) ? "" : "rotate-90"}`}
+              <div class="flex items-center mb-2">
+                <button
+                  type="button"
+                  onClick={() => toggleCategory(category)}
+                  class="flex items-center gap-1 text-xs font-semibold text-gray-500 uppercase hover:text-gray-700 cursor-pointer select-none text-left flex-1 min-w-0"
                 >
-                  ▶
-                </span>
-                {categoryIcon(categoryWorkflows[0])} {category}
-              </button>
+                  <span
+                    class={`inline-block transition-transform duration-200 ${collapsedCategories.has(category) ? "" : "rotate-90"}`}
+                  >
+                    ▶
+                  </span>
+                  {category === "__uncategorized__"
+                    ? "📂"
+                    : categoryIcon(categoryWorkflows[0], categories)}{" "}
+                  {category === "__uncategorized__"
+                    ? "Uncategorized"
+                    : (categories.find((c) => c.value === category)?.label ?? category)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCategoryManager(true)}
+                  class="text-gray-300 hover:text-gray-500 px-1 text-xs"
+                  title="Manage categories"
+                >
+                  ✎
+                </button>
+              </div>
               {!collapsedCategories.has(category) && (
                 <div class="space-y-2">
                   {categoryWorkflows.map((workflow) => {
-                    const isFile = needsFileInput(workflow);
-                    const isAudio = needsAudioInput(workflow);
                     const isManual = needsManualInput(workflow);
                     const isPending = pendingWorkflow?.slug === workflow.slug;
                     const isExecuting = executing === workflow.slug;
+
+                    const collect = workflow.recipe?.collect;
+                    const inputLabel = collect
+                      ? collect.includes("audio")
+                        ? "audio"
+                        : collect.includes("file")
+                          ? "file"
+                          : collect.includes("manual_input")
+                            ? "manual"
+                            : collect.includes("text_selection")
+                              ? "selection"
+                              : collect.includes("page_html")
+                                ? "page"
+                                : collect.includes("form_fields")
+                                  ? "form"
+                                  : null
+                      : null;
+                    const outputLabel: string | null = (() => {
+                      switch (workflow.output_action) {
+                        case "replace_selection": return "replace";
+                        case "copy_to_clipboard": return "copy";
+                        case "notification": return "notify";
+                        case "fill_fields": return "fill";
+                        case "insert_before": return "insert↑";
+                        case "insert_after": return "insert↓";
+                        case "side_panel_only": return "panel";
+                        case "download_file": return "download";
+                        default: return null;
+                      }
+                    })();
 
                     return (
                       <div key={workflow.id}>
@@ -985,22 +707,23 @@ export function App() {
                             {workflow.default_hotkey && (
                               <span class="text-xs text-blue-500">{workflow.default_hotkey}</span>
                             )}
-                            {isAudio && <span class="text-xs text-red-500">Voice</span>}
-                            {isFile && <span class="text-xs text-purple-500">File upload</span>}
-                            {isManual && <span class="text-xs text-teal-500">Manual input</span>}
-                            {connectionMode === "direct" && (
-                              <span
-                                class="text-xs text-gray-400 hover:text-gray-600 ml-auto"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setEditingWorkflow(workflow as LocalWorkflow);
-                                }}
-                              >
-                                Edit
-                              </span>
+                            {inputLabel && (
+                              <span class="text-xs text-gray-400">in: {inputLabel}</span>
                             )}
+                            {outputLabel && (
+                              <span class="text-xs text-gray-400">out: {outputLabel}</span>
+                            )}
+                            <span
+                              class="text-xs text-gray-400 hover:text-gray-600 ml-auto"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingWorkflow(workflow as LocalWorkflow);
+                              }}
+                            >
+                              Edit
+                            </span>
                           </div>
-                          {isExecuting && !isFile && !isAudio && (
+                          {isExecuting && (
                             <div class="flex items-center gap-2 text-xs text-amber-600 mt-1">
                               <span class="w-3 h-3 border-2 border-amber-600 border-t-transparent rounded-full animate-spin" />
                               <span>Processing with AI...</span>
@@ -1008,84 +731,8 @@ export function App() {
                           )}
                         </button>
 
-                        {/* Audio recording area */}
-                        {isPending && isAudio && (
-                          <div class="mt-1 p-3 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                            {isExecuting ? (
-                              <UploadProgressDisplay
-                                progress={uploadProgress}
-                                processing={processing}
-                                fileName="Audio recording"
-                              />
-                            ) : (
-                              <RecordingArea
-                                autoStart={autoStartRecording}
-                                stopSignal={stopRecordingSignal}
-                                deviceId={micDeviceId}
-                                onRecordingComplete={(file) =>
-                                  handleRecordingComplete(file, workflow)
-                                }
-                                onError={(err) => setFileError(err)}
-                              />
-                            )}
-                            {fileError && <div class="text-xs text-red-600 mt-1">{fileError}</div>}
-                          </div>
-                        )}
-
-                        {/* File upload area */}
-                        {isPending && isFile && (
-                          <div class="mt-1 p-3 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                            {isExecuting ? (
-                              <UploadProgressDisplay
-                                progress={uploadProgress}
-                                processing={processing}
-                                fileName={selectedFile?.name ?? ""}
-                              />
-                            ) : (
-                              <FileUploadArea
-                                config={
-                                  workflow.recipe?.file_config ?? {
-                                    accept: "*/*",
-                                    max_size_mb: 200,
-                                    label: "File",
-                                    required: true,
-                                  }
-                                }
-                                file={selectedFile}
-                                error={fileError}
-                                onFileSelect={(f) => handleFileSelect(f, workflow)}
-                                onClear={() => {
-                                  setSelectedFile(null);
-                                  setFileError(null);
-                                }}
-                              />
-                            )}
-
-                            {selectedFile && !isExecuting && (
-                              <div class="flex gap-2 mt-2">
-                                <button
-                                  onClick={() => handleExecuteWithFile(workflow)}
-                                  class="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition text-sm"
-                                >
-                                  Run
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setPendingWorkflow(null);
-                                    setSelectedFile(null);
-                                    setFileError(null);
-                                  }}
-                                  class="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
                         {/* Manual text input area */}
-                        {isPending && isManual && !isFile && !isAudio && (
+                        {isPending && isManual && (
                           <div class="mt-1 p-3 bg-gray-50 rounded-lg border border-dashed border-gray-300">
                             <textarea
                               value={manualInputText}
@@ -1133,7 +780,7 @@ export function App() {
             </div>
           ))}
         {workflows.length === 0 && (
-          <div class="text-sm text-gray-400 text-center py-4">No workflows available</div>
+          <div class="text-sm text-gray-400 text-center py-4">No actions available</div>
         )}
 
         {/* History */}

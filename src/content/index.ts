@@ -361,6 +361,29 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     return false;
   }
 
+  if (message.type === "WRITE_CLIPBOARD") {
+    navigator.clipboard.writeText(message.text).then(
+      () => sendResponse({ type: "WRITE_CLIPBOARD_RESULT", success: true }),
+      () => {
+        // Fallback: execCommand doesn't require user activation
+        try {
+          const ta = document.createElement("textarea");
+          ta.value = message.text;
+          ta.style.cssText = "position:fixed;opacity:0;pointer-events:none";
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          const ok = document.execCommand("copy");
+          document.body.removeChild(ta);
+          sendResponse({ type: "WRITE_CLIPBOARD_RESULT", success: ok });
+        } catch {
+          sendResponse({ type: "WRITE_CLIPBOARD_RESULT", success: false });
+        }
+      },
+    );
+    return true;
+  }
+
   return false;
 });
 

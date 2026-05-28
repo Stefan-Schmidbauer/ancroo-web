@@ -1,5 +1,6 @@
 import { useState, useEffect } from "preact/hooks";
-import { WORKFLOW_CATEGORIES } from "@/shared/types";
+import { DEFAULT_CATEGORIES } from "@/shared/local-categories";
+import type { Category } from "@/shared/local-categories";
 import type { LocalWorkflow, CollectionRecipe, WorkflowCategory } from "@/shared/types";
 import type { LLMProviderConfig } from "@/shared/settings";
 import { DEFAULT_MODELS } from "./ProviderSettings";
@@ -7,7 +8,6 @@ import { fetchModels, type ModelInfo } from "@/shared/llm/models";
 
 const INPUT_SOURCES: { value: CollectionRecipe["collect"][number]; label: string }[] = [
   { value: "text_selection", label: "Text Selection" },
-  { value: "clipboard", label: "Clipboard" },
   { value: "manual_input", label: "Manual Input" },
 ];
 
@@ -22,6 +22,7 @@ const OUTPUT_ACTIONS = [
 interface Props {
   workflow: LocalWorkflow | null;
   providers: LLMProviderConfig[];
+  categories?: Category[];
   onSave: (workflow: LocalWorkflow) => void;
   onDelete?: (slug: string) => void;
   onCancel: () => void;
@@ -35,7 +36,7 @@ function slugify(name: string): string {
 }
 
 /** Editor for creating / editing local workflows (card-based layout). */
-export function WorkflowEditor({ workflow, providers, onSave, onDelete, onCancel }: Props) {
+export function WorkflowEditor({ workflow, providers, categories = DEFAULT_CATEGORIES, onSave, onDelete, onCancel }: Props) {
   const isNew = !workflow;
   const defaultProvider = providers[0];
 
@@ -52,7 +53,9 @@ export function WorkflowEditor({ workflow, providers, onSave, onDelete, onCancel
   const [category, setCategory] = useState<WorkflowCategory>(
     (workflow?.category as WorkflowCategory) ?? "Custom",
   );
+  const [systemPrompt, setSystemPrompt] = useState(workflow?.system_prompt ?? "");
   const [temperature, setTemperature] = useState<string>(workflow?.temperature?.toString() ?? "");
+  const [maxTokens, setMaxTokens] = useState<string>(workflow?.max_tokens?.toString() ?? "");
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
 
@@ -74,6 +77,7 @@ export function WorkflowEditor({ workflow, providers, onSave, onDelete, onCancel
     try {
       const models = await fetchModels(p);
       setAvailableModels(models);
+      setModel((prev) => (models.some((m) => m.id === prev) ? prev : ""));
     } catch {
       setAvailableModels([]);
     } finally {
@@ -81,8 +85,12 @@ export function WorkflowEditor({ workflow, providers, onSave, onDelete, onCancel
     }
   }
 
+  const hotkeyValid =
+    !hotkey.trim() ||
+    /^(Ctrl\+|Alt\+|Shift\+){1,3}[A-Za-z0-9]$/i.test(hotkey.trim());
+
   function handleSave() {
-    if (!name.trim() || !promptTemplate.trim() || !providerId) return;
+    if (!name.trim() || !promptTemplate.trim() || !providerId || !model.trim() || !hotkeyValid) return;
 
     const slug = workflow?.slug ?? slugify(name);
     const saved: LocalWorkflow = {
@@ -91,7 +99,7 @@ export function WorkflowEditor({ workflow, providers, onSave, onDelete, onCancel
       name: name.trim(),
       description: description.trim() || null,
       category,
-      category_icon: WORKFLOW_CATEGORIES.find((c) => c.value === category)?.icon ?? null,
+      category_icon: categories.find((c) => c.value === category)?.icon ?? null,
       default_hotkey: hotkey.trim() || null,
       version: workflow?.version ?? "1.0.0",
       workflow_type: "text_transformation",
@@ -103,7 +111,9 @@ export function WorkflowEditor({ workflow, providers, onSave, onDelete, onCancel
       prompt_template: promptTemplate,
       provider_id: providerId,
       model,
+      system_prompt: systemPrompt.trim() || undefined,
       temperature: temperature ? parseFloat(temperature) : undefined,
+      max_tokens: maxTokens ? parseInt(maxTokens, 10) : undefined,
     };
     onSave(saved);
   }
@@ -113,7 +123,7 @@ export function WorkflowEditor({ workflow, providers, onSave, onDelete, onCancel
   return (
     <div class="flex flex-col h-screen">
       <div class="flex items-center justify-between p-3 border-b bg-white">
-        <h1 class="font-bold text-sm">{isNew ? "New Workflow" : "Edit Workflow"}</h1>
+        <h1 class="font-bold text-sm">{isNew ? "New Action" : "Edit Action"}</h1>
         <button onClick={onCancel} class="text-xs text-gray-400 hover:text-gray-600">
           Cancel
         </button>
@@ -129,7 +139,7 @@ export function WorkflowEditor({ workflow, providers, onSave, onDelete, onCancel
               value={name}
               onInput={(e) => setName((e.target as HTMLInputElement).value)}
               class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
-              placeholder="My Workflow"
+              placeholder="My Action"
             />
           </div>
           <div>
@@ -139,7 +149,7 @@ export function WorkflowEditor({ workflow, providers, onSave, onDelete, onCancel
               value={description}
               onInput={(e) => setDescription((e.target as HTMLInputElement).value)}
               class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
-              placeholder="What this workflow does..."
+              placeholder="What this action does..."
             />
           </div>
           <div>
@@ -151,7 +161,7 @@ export function WorkflowEditor({ workflow, providers, onSave, onDelete, onCancel
               }
               class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
             >
-              {WORKFLOW_CATEGORIES.map((c) => (
+              {categories.map((c) => (
                 <option key={c.value} value={c.value}>
                   {c.icon} {c.label}
                 </option>
@@ -172,8 +182,18 @@ export function WorkflowEditor({ workflow, providers, onSave, onDelete, onCancel
               placeholder={"Summarize the following text:\n\n{text}"}
             />
             <p class="text-xs text-gray-400 mt-0.5">
-              Variables: {"{text}"} {"{clipboard}"} {"{url}"} {"{title}"}
+              Variables: {"{text}"} {"{url}"} {"{title}"}
             </p>
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-700">System Prompt</label>
+            <textarea
+              value={systemPrompt}
+              onInput={(e) => setSystemPrompt((e.target as HTMLTextAreaElement).value)}
+              class="w-full border rounded px-2 py-1.5 text-sm mt-0.5 font-mono resize-none"
+              rows={3}
+              placeholder="Optional system instructions for the model..."
+            />
           </div>
         </div>
 
@@ -198,16 +218,14 @@ export function WorkflowEditor({ workflow, providers, onSave, onDelete, onCancel
           </div>
           <div>
             <label class="text-xs font-medium text-gray-700">Model</label>
-            <div class="flex gap-1 mt-0.5">
+            <div class="flex gap-1 mt-0.5 overflow-hidden">
               {availableModels.length > 0 ? (
                 <select
                   value={model}
                   onChange={(e) => setModel((e.target as HTMLSelectElement).value)}
-                  class="flex-1 border rounded px-2 py-1.5 text-sm font-mono"
+                  class="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm font-mono"
                 >
-                  {!availableModels.some((m) => m.id === model) && model && (
-                    <option value={model}>{model}</option>
-                  )}
+                  <option value="">Select a model...</option>
                   {availableModels.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.name}
@@ -219,32 +237,10 @@ export function WorkflowEditor({ workflow, providers, onSave, onDelete, onCancel
                   type="text"
                   value={model}
                   onInput={(e) => setModel((e.target as HTMLInputElement).value)}
-                  class="flex-1 border rounded px-2 py-1.5 text-sm font-mono"
+                  class="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm font-mono"
                   placeholder="gpt-4o"
                 />
               )}
-              <button
-                type="button"
-                onClick={() => loadModels()}
-                disabled={loadingModels}
-                class="border rounded px-2 py-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition disabled:opacity-50"
-                title="Refresh models"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class={loadingModels ? "animate-spin" : ""}
-                >
-                  <polyline points="23 4 23 10 17 10" />
-                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-                </svg>
-              </button>
             </div>
           </div>
           <div>
@@ -257,7 +253,18 @@ export function WorkflowEditor({ workflow, providers, onSave, onDelete, onCancel
               value={temperature}
               onInput={(e) => setTemperature((e.target as HTMLInputElement).value)}
               class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
-              placeholder="Provider default (0.8 – 1.0)"
+              placeholder="Default"
+            />
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-700">Max Tokens</label>
+            <input
+              type="number"
+              min="1"
+              value={maxTokens}
+              onInput={(e) => setMaxTokens((e.target as HTMLInputElement).value)}
+              class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
+              placeholder="Default"
             />
           </div>
         </div>
@@ -302,9 +309,14 @@ export function WorkflowEditor({ workflow, providers, onSave, onDelete, onCancel
               type="text"
               value={hotkey}
               onInput={(e) => setHotkey((e.target as HTMLInputElement).value)}
-              class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
+              class={`w-full border rounded px-2 py-1.5 text-sm mt-0.5 ${hotkey.trim() && !hotkeyValid ? "border-red-400" : ""}`}
               placeholder="Ctrl+Shift+G"
             />
+            {hotkey.trim() && !hotkeyValid ? (
+              <p class="text-xs text-red-500 mt-0.5">Invalid format. Example: Ctrl+Shift+G</p>
+            ) : (
+              <p class="text-xs text-gray-400 mt-0.5">Modifiers: Ctrl, Alt, Shift</p>
+            )}
           </div>
         </div>
       </div>
@@ -313,17 +325,17 @@ export function WorkflowEditor({ workflow, providers, onSave, onDelete, onCancel
       <div class="p-3 border-t bg-white space-y-2">
         <button
           onClick={handleSave}
-          disabled={!name.trim() || !promptTemplate.trim() || !providerId}
+          disabled={!name.trim() || !promptTemplate.trim() || !providerId || !model.trim() || !hotkeyValid}
           class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition text-sm disabled:opacity-50"
         >
-          {isNew ? "Create Workflow" : "Save Changes"}
+          {isNew ? "Create Action" : "Save Changes"}
         </button>
         {!isNew && onDelete && (
           <button
             onClick={() => onDelete(workflow!.slug)}
             class="w-full text-xs text-red-400 hover:text-red-600"
           >
-            Delete Workflow
+            Delete Action
           </button>
         )}
       </div>

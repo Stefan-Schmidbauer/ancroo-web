@@ -28,7 +28,7 @@ export function parseHotkey(hotkeyStr: string): ParsedHotkey | null {
 }
 
 /** Sources that require the side panel UI to collect input. */
-const SIDE_PANEL_SOURCES = new Set(["audio", "file", "clipboard", "form_fields", "manual_input"]);
+const SIDE_PANEL_SOURCES = new Set(["audio", "file", "form_fields", "manual_input"]);
 
 /**
  * Convert server hotkey mappings into parsed bindings for the content script.

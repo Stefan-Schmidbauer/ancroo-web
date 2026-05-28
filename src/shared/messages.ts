@@ -97,6 +97,16 @@ export interface SetFormFieldsResultMessage {
   errors: string[];
 }
 
+export interface WriteClipboardMessage {
+  type: "WRITE_CLIPBOARD";
+  text: string;
+}
+
+export interface WriteClipboardResultMessage {
+  type: "WRITE_CLIPBOARD_RESULT";
+  success: boolean;
+}
+
 export type ExtensionMessage =
   | GetSelectionMessage
   | SelectionResultMessage
@@ -115,4 +125,6 @@ export type ExtensionMessage =
   | ShowToastMessage
   | HideToastMessage
   | SetFormFieldsMessage
-  | SetFormFieldsResultMessage;
+  | SetFormFieldsResultMessage
+  | WriteClipboardMessage
+  | WriteClipboardResultMessage;

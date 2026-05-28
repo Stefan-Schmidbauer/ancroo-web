@@ -7,13 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-05-28
+
 ### Added
 
-- Direct Mode — use LLM APIs (OpenAI, Anthropic, Gemini, Ollama, OpenRouter) without a backend
-- Workflow category selector in editor
+- LLM provider support — OpenAI, Anthropic, Gemini, Ollama, OpenRouter (and any OpenAI-compatible endpoint)
+- Workflow categories — organise actions into named categories with emoji icons; collapsible groups in the side panel
+- Category manager — create, rename, and delete custom categories with an emoji icon picker; actions reassigned to Uncategorized on deletion
+- Category selector in action editor
+- System prompt field in action editor
+- Max tokens field in action editor
+- Hotkey format validation in action editor (e.g. `Ctrl+Shift+G`)
 - Default API endpoint display in provider settings
 - Privacy policy, store listing, and promotional assets for Chrome Web Store
 - Localization support (`_locales/en`)
+- Backup & restore — export workflows and provider settings to JSON; import on any device
 
 ### Fixed
 
@@ -22,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Direct Mode only — removed Backend Mode, OAuth2 authentication, audio recording, and file upload
 - Updated all dependencies and fixed known vulnerabilities
 
 ## [0.2.0] — 2026-03-20
@@ -59,6 +68,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Execution history (last 50 entries)
 - OAuth2 PKCE authentication for multi-user backends
 
-[Unreleased]: https://github.com/ancroo/ancroo-web/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ancroo/ancroo-web/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/ancroo/ancroo-web/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/ancroo/ancroo-web/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ancroo/ancroo-web/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ancroo/ancroo-web/releases/tag/v0.1.0

@@ -19,7 +19,7 @@ export function AboutPanel({ onClose }: { onClose: () => void }) {
             class="w-20 h-20 mx-auto rounded-2xl shadow-md mb-3"
           />
           <h2 class="text-lg font-bold text-gray-900">Ancroo</h2>
-          <p class="text-sm text-gray-500 mt-1">AI Workflow Runner for your Browser</p>
+          <p class="text-sm text-gray-500 mt-1">AI Prompt Launcher for your Browser</p>
         </div>
 
         <div class="bg-white rounded-lg border divide-y">

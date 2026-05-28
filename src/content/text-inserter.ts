@@ -74,7 +74,11 @@ function insertIntoInput(element: HTMLInputElement | HTMLTextAreaElement, text: 
 
     // Restore cursor position
     const newCursorPos = start + text.length;
-    element.setSelectionRange(newCursorPos, newCursorPos);
+    try {
+      element.setSelectionRange(newCursorPos, newCursorPos);
+    } catch {
+      // email, number, range etc. don't support setSelectionRange
+    }
     return true;
   }
 
@@ -104,7 +108,11 @@ export async function smartInsertBefore(text: string): Promise<boolean> {
       );
       activeElement.dispatchEvent(new Event("input", { bubbles: true }));
       activeElement.dispatchEvent(new Event("change", { bubbles: true }));
-      activeElement.setSelectionRange(start, start);
+      try {
+        activeElement.setSelectionRange(start, start);
+      } catch {
+        // email, number, range etc. don't support setSelectionRange
+      }
       return true;
     }
     return false;
@@ -160,7 +168,11 @@ export async function smartInsertAfter(text: string): Promise<boolean> {
       activeElement.dispatchEvent(new Event("input", { bubbles: true }));
       activeElement.dispatchEvent(new Event("change", { bubbles: true }));
       const newPos = end + 1 + text.length;
-      activeElement.setSelectionRange(newPos, newPos);
+      try {
+        activeElement.setSelectionRange(newPos, newPos);
+      } catch {
+        // email, number, range etc. don't support setSelectionRange
+      }
       return true;
     }
     return false;

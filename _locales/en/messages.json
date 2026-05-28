@@ -4,7 +4,7 @@
     "description": "The display name of the extension"
   },
   "extensionDescription": {
-    "message": "AI Workflow Runner for your Browser. Select text, trigger a workflow, get results — with any LLM API or a self-hosted backend.",
+    "message": "AI Prompt Launcher for your Browser. Point at anything on a page, run an AI action, get results — with any LLM API.",
     "description": "The description of the extension shown in the Chrome Web Store and extension management page"
   },
   "openSidePanel": {

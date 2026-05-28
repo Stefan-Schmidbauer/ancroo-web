@@ -15,12 +15,6 @@ function toOriginPattern(url: string): string {
   }
 }
 
-/** Check if the extension already has permission for this URL. */
-export async function hasHostPermission(url: string): Promise<boolean> {
-  const pattern = toOriginPattern(url);
-  return chrome.permissions.contains({ origins: [pattern] });
-}
-
 /** Request host permission for a URL if not already granted.
  *  Returns true if permission was granted (or already existed), false if denied.
  *

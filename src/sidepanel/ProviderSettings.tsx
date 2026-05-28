@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 import type { LLMProviderConfig, LLMProviderType } from "@/shared/settings";
 import { ensureHostPermission } from "@/shared/host-permission";
+import { listLocalWorkflows } from "@/shared/local-workflows";
 
 const PROVIDER_TYPES: { value: LLMProviderType; label: string }[] = [
   { value: "openai", label: "OpenAI" },
@@ -38,6 +39,7 @@ export function ProviderSettings({ providers, onSave }: Props) {
   const [editing, setEditing] = useState<LLMProviderConfig | null>(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string; count: number } | null>(null);
 
   function startAdd() {
     setEditing({
@@ -54,8 +56,20 @@ export function ProviderSettings({ providers, onSave }: Props) {
     setTestResult(null);
   }
 
-  function handleDelete(id: string) {
-    onSave(providers.filter((p) => p.id !== id));
+  async function startDelete(id: string, name: string) {
+    const workflows = await listLocalWorkflows();
+    const count = workflows.filter((w) => w.provider_id === id).length;
+    if (count === 0) {
+      onSave(providers.filter((p) => p.id !== id));
+    } else {
+      setPendingDelete({ id, name, count });
+    }
+  }
+
+  function confirmDelete() {
+    if (!pendingDelete) return;
+    onSave(providers.filter((p) => p.id !== pendingDelete.id));
+    setPendingDelete(null);
   }
 
   async function handleSaveProvider() {
@@ -235,6 +249,30 @@ export function ProviderSettings({ providers, onSave }: Props) {
     <div class="space-y-3">
       <h3 class="text-xs font-semibold text-gray-500 uppercase">LLM Providers</h3>
 
+      {pendingDelete && (
+        <div class="bg-red-50 border border-red-200 rounded-lg p-3 space-y-2">
+          <p class="text-xs text-red-700">
+            <span class="font-medium">{pendingDelete.name}</span> is used by{" "}
+            {pendingDelete.count} action{pendingDelete.count !== 1 ? "s" : ""}. They will stop
+            working after deletion.
+          </p>
+          <div class="flex gap-2">
+            <button
+              onClick={() => setPendingDelete(null)}
+              class="flex-1 border text-xs py-1 rounded hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmDelete}
+              class="flex-1 bg-red-500 text-white text-xs py-1 rounded hover:bg-red-600"
+            >
+              Delete anyway
+            </button>
+          </div>
+        </div>
+      )}
+
       {providers.length === 0 && <p class="text-xs text-gray-400">No providers configured yet.</p>}
 
       {providers.map((p) => (
@@ -254,7 +292,7 @@ export function ProviderSettings({ providers, onSave }: Props) {
               Edit
             </button>
             <button
-              onClick={() => handleDelete(p.id)}
+              onClick={() => startDelete(p.id, p.name)}
               class="text-xs text-red-400 hover:text-red-600 px-1"
             >
               Delete

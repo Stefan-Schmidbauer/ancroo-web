@@ -10,7 +10,7 @@
 #   docker cp $id:/app/dist ./extension-dist
 #   docker rm $id
 
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 

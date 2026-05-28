@@ -2,71 +2,15 @@ import { sendToTab } from "@/shared/tab-messaging";
 import { buildHotkeyBindings, HOTKEY_STORAGE_KEY } from "@/shared/hotkeys";
 import { executeWorkflowUnified } from "@/shared/executor";
 import { listWorkflowsUnified, fetchHotkeySettingsUnified } from "@/shared/workflow-provider";
-import type { ExtensionMessage, SelectionResultMessage } from "@/shared/messages";
+import type { ExtensionMessage, SelectionResultMessage, WriteClipboardResultMessage } from "@/shared/messages";
 import type { Workflow, HistoryEntry, HotkeyBinding } from "@/shared/types";
 
 // Allow content scripts to read chrome.storage.session (required for hotkey bindings)
 chrome.storage.session.setAccessLevel({ accessLevel: "TRUSTED_AND_UNTRUSTED_CONTEXTS" });
 
-// --- Microphone permission via extension tab ---
-
-// Chrome requires a real user gesture (click) to show the mic permission dialog.
-// Side panels, offscreen docs, and auto-executing pages all fail with "Permission dismissed".
-// Solution: open an extension page in a new tab with a button the user clicks.
-
-let micResolve: ((value: unknown) => void) | null = null;
-
-let micTabId: number | null = null;
-
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // Only accept messages from our own extension
   if (sender.id !== chrome.runtime.id) return false;
-
-  if (msg.type === "MIC_PERMISSION_RESULT") {
-    if (micResolve) {
-      micResolve(msg);
-      micResolve = null;
-    }
-    // Close the permission tab — window.close() doesn't work for extension tabs
-    if (micTabId !== null) {
-      chrome.tabs.remove(micTabId).catch(() => {});
-      micTabId = null;
-    }
-    return false;
-  }
-
-  if (msg.type === "REQUEST_MIC_PERMISSION") {
-    (async () => {
-      try {
-        const resultPromise = new Promise((resolve) => {
-          micResolve = resolve;
-          setTimeout(() => {
-            if (micResolve === resolve) {
-              micResolve = null;
-              resolve({ ok: false, error: "Microphone permission request timed out" });
-            }
-          }, 60000);
-        });
-
-        // Open extension page in a new tab — the user clicks a button there
-        // which triggers getUserMedia() with a real user gesture.
-        const tab = await chrome.tabs.create({
-          url: chrome.runtime.getURL("request-mic.html"),
-          active: true,
-        });
-        micTabId = tab.id ?? null;
-
-        const result = await resultPromise;
-        sendResponse(result);
-      } catch (err) {
-        sendResponse({
-          ok: false,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    })();
-    return true;
-  }
 
   // --- Content script detected a hotkey press ---
   if (msg.type === "EXECUTE_HOTKEY_WORKFLOW") {
@@ -129,17 +73,14 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 // --- Hotkey management ---
 
 /**
- * Fetch hotkey settings from the server and store parsed bindings
- * in chrome.storage.session for the content script to read.
- *
- * Also fetches the workflow list so each binding carries a `needsSidePanel`
- * flag (required for synchronous `sidePanel.open()` in the message handler).
+ * Fetch hotkey settings and store parsed bindings in chrome.storage.session
+ * for the content script to read.
  *
  * Bindings are additionally persisted in chrome.storage.local so they
- * survive browser restarts even when the backend is temporarily unreachable.
+ * survive browser restarts.
  *
  * When called from startup/install, retries up to 3 times with
- * increasing delay so the backend has time to become ready.
+ * increasing delay so local storage has time to become ready.
  */
 async function refreshHotkeyBindings(retries = 0): Promise<void> {
   try {
@@ -179,8 +120,8 @@ async function refreshHotkeyBindings(retries = 0): Promise<void> {
 /**
  * Handle workflow execution triggered by a hotkey from the content script.
  *
- * Text workflows: execute directly (GET_SELECTION → API → INSERT_TEXT).
- * Audio/file/complex workflows: set pending state and open the side panel.
+ * Text workflows: execute directly (GET_SELECTION → LLM → INSERT_TEXT).
+ * Manual/complex workflows: set pending state and open the side panel.
  */
 async function handleHotkeyExecution(workflowSlug: string, tab?: chrome.tabs.Tab): Promise<void> {
   if (!tab?.id) return;
@@ -202,32 +143,11 @@ async function handleHotkeyExecution(workflowSlug: string, tab?: chrome.tabs.Tab
   if (!workflow) return;
 
   const collectSources = Array.isArray(workflow.recipe?.collect) ? workflow.recipe.collect : [];
-  const needsAudio = collectSources.includes("audio");
-  const needsFile = collectSources.includes("file");
   const needsManual = collectSources.includes("manual_input");
-  const needsComplexInput =
-    collectSources.includes("clipboard") || collectSources.includes("form_fields");
+  const needsComplexInput = collectSources.includes("form_fields");
 
-  // Audio/file/complex workflows need the side panel — store pending state.
-  // The side panel was already opened synchronously in the onMessage handler
-  // (before any await) to preserve the user-gesture context.
-  if (needsAudio) {
-    await chrome.storage.session.set({ pendingRecording: workflowSlug });
-    // Notify side panel if already open (runtime.sendMessage reaches extension pages)
-    chrome.runtime
-      .sendMessage({
-        type: "START_RECORDING",
-        workflowSlug,
-      })
-      .catch(() => {});
-    return;
-  }
-
-  if (needsFile) {
-    await chrome.storage.session.set({ pendingFileWorkflow: workflowSlug });
-    return;
-  }
-
+  // Manual/complex workflows need the side panel — store pending state.
+  // The side panel was already opened synchronously in the onMessage handler.
   if (needsManual || needsComplexInput) {
     await chrome.storage.session.set({ pendingWorkflowSlug: workflowSlug });
     return;
@@ -306,13 +226,27 @@ async function handleHotkeyExecution(workflowSlug: string, tab?: chrome.tabs.Tab
           variant: "success",
           duration: 2000,
         } as ExtensionMessage);
-      } else if (
-        action === "side_panel_only" ||
-        action === "copy_to_clipboard" ||
-        action === "clipboard" ||
-        action === "notification"
-      ) {
-        // Clipboard is not available in service workers — show in side panel
+      } else if (action === "copy_to_clipboard" || action === "clipboard") {
+        const res = await sendToTab<WriteClipboardResultMessage>(tab.id, {
+          type: "WRITE_CLIPBOARD",
+          text: result.result.text,
+        } as ExtensionMessage);
+        if (res?.success) {
+          await sendToTab(tab.id, {
+            type: "SHOW_TOAST",
+            text: `Copied — ${workflow.name}`,
+            variant: "success",
+            duration: 2000,
+          } as ExtensionMessage);
+        } else {
+          await sendToTab(tab.id, {
+            type: "SHOW_TOAST",
+            text: `Copy failed — ${workflow.name}`,
+            variant: "error",
+            duration: 3000,
+          } as ExtensionMessage);
+        }
+      } else if (action === "side_panel_only" || action === "notification") {
         await chrome.storage.session.set({
           pendingResult: {
             text: result.result.text,
@@ -359,7 +293,7 @@ async function tryOpenSidePanel(tabId: number): Promise<void> {
     await chrome.sidePanel.open({ tabId });
   } catch {
     // sidePanel.open() requires a user gesture context which is lost after await.
-    // The pending state is already stored — user can open manually via Ctrl+Shift+Y.
+    // The pending state is already stored — user can open manually via Alt+Shift+Y.
   }
 }
 

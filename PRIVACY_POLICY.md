@@ -1,12 +1,12 @@
 # Privacy Policy — Ancroo Browser Extension
 
-**Effective date:** 2026-04-03
+**Effective date:** 2026-05-27
 **Extension name:** Ancroo
 **Developer:** Stefan Schmidbauer
 
 ## Summary
 
-Ancroo does not collect, transmit, or sell any personal data. All user data stays in your browser or is sent only to services you explicitly configure.
+Ancroo does not collect, transmit, or sell any personal data. All user data stays in your browser or is sent only to LLM providers you explicitly configure.
 
 ## Data Storage
 
@@ -14,21 +14,19 @@ All data is stored locally in your browser using `chrome.storage.local`:
 
 | Data              | Purpose                                             | Stored where           |
 | ----------------- | --------------------------------------------------- | ---------------------- |
-| Settings          | Extension configuration (mode, provider URL, model) | `chrome.storage.local` |
-| API keys          | Authentication with LLM providers (Direct Mode)     | `chrome.storage.local` |
-| Workflows         | User-created workflow definitions (Direct Mode)     | `chrome.storage.local` |
+| Settings          | Extension configuration (provider URL, model)       | `chrome.storage.local` |
+| API keys          | Authentication with LLM providers                   | `chrome.storage.local` |
+| Workflows         | User-created workflow definitions                   | `chrome.storage.local` |
 | Hotkey bindings   | Keyboard shortcut assignments                       | `chrome.storage.local` |
 | Execution history | Last 50 workflow results for quick access           | `chrome.storage.local` |
-| Auth tokens       | OAuth2 session tokens (Backend Mode only)           | `chrome.storage.local` |
 
 `chrome.storage.local` is sandboxed per extension — websites and other extensions cannot access it. The storage is not encrypted on disk; anyone with access to your browser profile can read it.
 
 ## Data Transmission
 
-Ancroo only sends data to services **you** configure:
+Ancroo only sends data to LLM providers **you** configure:
 
-- **Direct Mode:** Your input text and prompts are sent to the LLM provider you selected (e.g. OpenAI, Anthropic, Google Gemini, Ollama). API keys are sent only to the corresponding provider endpoint.
-- **Backend Mode:** Your input text, audio recordings, and file uploads are sent to the self-hosted Ancroo Backend URL you configured.
+- Your input text and prompts are sent to the LLM provider you selected (e.g. OpenAI, Anthropic, Google Gemini, Ollama). API keys are sent only to the corresponding provider endpoint.
 
 No data is sent to the extension developer, Ancroo servers, or any third party beyond your configured providers.
 
@@ -52,11 +50,10 @@ Ancroo does **not** collect:
 | `scripting`                           | Inject content scripts for text selection and hotkey handling      |
 | `clipboardRead` / `clipboardWrite`    | Read/write clipboard when a workflow uses clipboard input/output   |
 | `contextMenus`                        | Add "Run with Ancroo" to the right-click menu                      |
-| `identity`                            | OAuth2 PKCE authentication with self-hosted backend (Backend Mode) |
 | `downloads`                           | Download files produced by workflow output actions                 |
 | `declarativeNetRequestWithHostAccess` | Override request headers for local Ollama CORS compatibility       |
 
-Host permissions for known LLM APIs (OpenAI, Anthropic, Gemini, OpenRouter) and localhost are declared in the manifest. Custom backend URLs are requested via `chrome.permissions.request()` only when needed.
+Host permissions for known LLM APIs (OpenAI, Anthropic, Gemini, OpenRouter) and localhost are declared in the manifest. Custom provider URLs are requested via `chrome.permissions.request()` only when needed.
 
 ## Data Retention
 

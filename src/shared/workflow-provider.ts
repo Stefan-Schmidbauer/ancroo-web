@@ -1,32 +1,15 @@
-/** Unified workflow listing — dispatches to backend or local store based on connection mode. */
+/** Workflow listing and hotkey settings from local storage. */
 
 import type { Workflow, HotkeyMapping } from "./types";
-import { getConnectionMode } from "./connection-mode";
-import {
-  listWorkflows as backendListWorkflows,
-  fetchHotkeySettings as backendFetchHotkeySettings,
-} from "./api-client";
 import { listLocalWorkflows } from "./local-workflows";
 
-/** List all workflows (from backend or local store). */
+/** List all workflows from local storage. */
 export async function listWorkflowsUnified(): Promise<Workflow[]> {
-  const mode = await getConnectionMode();
-
-  if (mode === "backend") {
-    return backendListWorkflows();
-  }
-
   return listLocalWorkflows();
 }
 
-/** Fetch hotkey mappings (from backend or derived from local workflows). */
+/** Fetch hotkey mappings derived from local workflows. */
 export async function fetchHotkeySettingsUnified(): Promise<HotkeyMapping[]> {
-  const mode = await getConnectionMode();
-
-  if (mode === "backend") {
-    return backendFetchHotkeySettings();
-  }
-
   const workflows = await listLocalWorkflows();
   return workflows
     .filter((w) => w.default_hotkey)

@@ -10,9 +10,7 @@ export interface FileConfig {
 export interface CollectionRecipe {
   collect: (
     | "text_selection"
-    | "clipboard"
     | "form_fields"
-    | "page_context"
     | "page_html"
     | "file"
     | "audio"
@@ -27,12 +25,11 @@ export interface CollectionRecipe {
 export interface InputDataPacket {
   text?: string;
   html?: string;
-  clipboard?: string;
   fields?: Record<string, string>;
   context?: { url: string; title: string };
 }
 
-/** Fixed workflow categories with display metadata. */
+/** Fallback category list used when no stored categories exist yet. */
 export const WORKFLOW_CATEGORIES = [
   { value: "Starter", label: "Starter", icon: "⚡" },
   { value: "Writing", label: "Writing", icon: "✍️" },
@@ -41,9 +38,9 @@ export const WORKFLOW_CATEGORIES = [
   { value: "Research", label: "Research", icon: "🔍" },
   { value: "Productivity", label: "Productivity", icon: "⚙️" },
   { value: "Custom", label: "Custom", icon: "🔧" },
-] as const;
+];
 
-export type WorkflowCategory = (typeof WORKFLOW_CATEGORIES)[number]["value"];
+export type WorkflowCategory = string;
 
 /** Workflow definition from the backend. */
 export interface Workflow {
@@ -63,9 +60,9 @@ export interface Workflow {
   output_action: string | null;
 }
 
-/** Local workflow for Direct Mode. Extends Workflow so existing UI works unchanged. */
+/** Local workflow stored in chrome.storage. Extends Workflow so existing UI works unchanged. */
 export interface LocalWorkflow extends Workflow {
-  /** Prompt template with {text}, {clipboard}, {html}, {url}, {title}, {fields} placeholders. */
+  /** Prompt template with {text}, {html}, {url}, {title}, {fields} placeholders. */
   prompt_template: string;
   /** ID of the LLMProviderConfig to use. */
   provider_id: string;
@@ -103,15 +100,6 @@ export interface ExecuteWorkflowResponse {
   status: "success" | "error";
   result: ExecutionResult | null;
   duration_ms: number | null;
-}
-
-/** Current user info. */
-export interface User {
-  id: string;
-  email: string;
-  display_name: string | null;
-  groups: string[];
-  is_admin: boolean;
 }
 
 /** Execution history entry (stored locally). */
