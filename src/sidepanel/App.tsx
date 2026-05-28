@@ -17,7 +17,6 @@ import type {
   InsertResultMessage,
 } from "@/shared/messages";
 import { sendToTab } from "@/shared/tab-messaging";
-import { HOTKEY_STORAGE_KEY } from "@/shared/hotkeys";
 import {
   needsManualInput,
   friendlyError,

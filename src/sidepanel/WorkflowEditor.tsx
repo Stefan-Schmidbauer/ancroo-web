@@ -57,7 +57,7 @@ export function WorkflowEditor({ workflow, providers, categories = DEFAULT_CATEG
   const [temperature, setTemperature] = useState<string>(workflow?.temperature?.toString() ?? "");
   const [maxTokens, setMaxTokens] = useState<string>(workflow?.max_tokens?.toString() ?? "");
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
-  const [loadingModels, setLoadingModels] = useState(false);
+  const [, setLoadingModels] = useState(false);
 
   // Load models when provider changes
   useEffect(() => {

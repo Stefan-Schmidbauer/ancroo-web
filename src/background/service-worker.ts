@@ -8,7 +8,7 @@ import type { Workflow, HistoryEntry, HotkeyBinding } from "@/shared/types";
 // Allow content scripts to read chrome.storage.session (required for hotkey bindings)
 chrome.storage.session.setAccessLevel({ accessLevel: "TRUSTED_AND_UNTRUSTED_CONTEXTS" });
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender) => {
   // Only accept messages from our own extension
   if (sender.id !== chrome.runtime.id) return false;
 
