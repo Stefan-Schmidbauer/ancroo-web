@@ -35,6 +35,11 @@ export async function deleteLocalWorkflow(slug: string): Promise<void> {
   await chrome.storage.local.set({ [STORAGE_KEY]: filtered });
 }
 
+/** Replace all local workflows (used by backup restore). */
+export async function replaceAllLocalWorkflows(workflows: LocalWorkflow[]): Promise<void> {
+  await chrome.storage.local.set({ [STORAGE_KEY]: workflows });
+}
+
 /** Seed starter workflows if none exist yet. Sets provider_id on all starters. */
 export async function seedStarterWorkflows(providerId: string, model: string): Promise<void> {
   const existing = await listLocalWorkflows();

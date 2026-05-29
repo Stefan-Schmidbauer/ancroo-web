@@ -36,3 +36,8 @@ export async function deleteCategory(value: string): Promise<void> {
   const all = await listCategories();
   await chrome.storage.local.set({ [STORAGE_KEY]: all.filter((c) => c.value !== value) });
 }
+
+/** Replace all categories (used by backup restore). */
+export async function replaceAllCategories(cats: Category[]): Promise<void> {
+  await chrome.storage.local.set({ [STORAGE_KEY]: cats });
+}

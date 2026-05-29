@@ -1,8 +1,8 @@
 import type { LocalWorkflow } from "./types";
 import type { LLMProviderConfig } from "./settings";
-import { listLocalWorkflows, saveLocalWorkflow } from "./local-workflows";
+import { listLocalWorkflows, replaceAllLocalWorkflows } from "./local-workflows";
 import { getSettings, saveSettings } from "./settings";
-import { listCategories, saveCategory } from "./local-categories";
+import { listCategories, replaceAllCategories } from "./local-categories";
 import type { Category } from "./local-categories";
 
 export interface BackupData {
@@ -75,16 +75,15 @@ export async function importBackup(file: File): Promise<{ workflows: number; pro
     throw new Error("Not a valid Ancroo backup file");
   }
 
-  for (const workflow of parsed.workflows) {
-    await saveLocalWorkflow(workflow);
-  }
+  // Restore semantics: the backup is a snapshot, so replace workflows and
+  // categories wholesale instead of merging onto any seeded defaults.
+  await replaceAllLocalWorkflows(parsed.workflows);
 
-  if (parsed.categories && parsed.categories.length > 0) {
-    for (const cat of parsed.categories) {
-      if (cat && typeof cat.value === "string" && typeof cat.label === "string") {
-        await saveCategory(cat);
-      }
-    }
+  if (parsed.categories) {
+    const validCategories = parsed.categories.filter(
+      (cat) => cat && typeof cat.value === "string" && typeof cat.label === "string",
+    );
+    await replaceAllCategories(validCategories);
   }
 
   if (parsed.providers.length > 0) {
