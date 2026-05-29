@@ -57,10 +57,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ancroo-web-extension
-          path: ancroo-web-extension
-
-      - name: Create release archive
-        run: zip -9 -r ancroo-web-extension.zip ancroo-web-extension
+          path: .
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
