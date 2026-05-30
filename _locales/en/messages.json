@@ -4,7 +4,7 @@
     "description": "The display name of the extension"
   },
   "extensionDescription": {
-    "message": "AI Prompt Launcher for your Browser. Point at anything on a page, run an AI action, get results — with any LLM API.",
+    "message": "Point. Prompt. Done. An AI prompt launcher for any page — run prompts with your own LLM, no tab switching.",
     "description": "The description of the extension shown in the Chrome Web Store and extension management page"
   },
   "openSidePanel": {
