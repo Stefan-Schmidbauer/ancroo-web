@@ -54,9 +54,9 @@ async function fetchOpenAIModels(provider: LLMProviderConfig): Promise<ModelInfo
 }
 
 async function fetchGeminiModels(provider: LLMProviderConfig): Promise<ModelInfo[]> {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models?key=${provider.api_key}`,
-  );
+  const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
+    headers: { "x-goog-api-key": provider.api_key },
+  });
   if (!res.ok) throw new Error(`Gemini error ${res.status}`);
   const data = await res.json();
   return (data.models ?? [])

@@ -13,6 +13,15 @@ export interface BackupData {
   categories?: Category[];
 }
 
+const PROVIDER_TYPES: ReadonlySet<LLMProviderConfig["type"]> = new Set([
+  "openai",
+  "anthropic",
+  "gemini",
+  "ollama",
+  "openrouter",
+  "openai-compatible",
+]);
+
 export function validateBackup(data: unknown): data is BackupData {
   if (!data || typeof data !== "object") return false;
   const d = data as Record<string, unknown>;
@@ -23,6 +32,13 @@ export function validateBackup(data: unknown): data is BackupData {
     if (!w || typeof w !== "object") return false;
     const wf = w as Record<string, unknown>;
     if (typeof wf.slug !== "string" || typeof wf.name !== "string" || typeof wf.prompt_template !== "string") return false;
+  }
+  for (const p of d.providers) {
+    if (!p || typeof p !== "object") return false;
+    const pr = p as Record<string, unknown>;
+    if (typeof pr.id !== "string" || typeof pr.name !== "string" || typeof pr.api_key !== "string") return false;
+    if (!PROVIDER_TYPES.has(pr.type as LLMProviderConfig["type"])) return false;
+    if (pr.base_url !== undefined && typeof pr.base_url !== "string") return false;
   }
   return true;
 }

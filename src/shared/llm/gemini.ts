@@ -9,7 +9,7 @@ export async function callGemini(
   provider: LLMProviderConfig,
   request: LLMRequest,
 ): Promise<LLMResponse> {
-  const url = `${BASE_URL}/models/${request.model}:generateContent`;
+  const url = `${BASE_URL}/models/${encodeURIComponent(request.model)}:generateContent`;
 
   const contents: { role: string; parts: { text: string }[] }[] = [];
   if (request.system_prompt) {
