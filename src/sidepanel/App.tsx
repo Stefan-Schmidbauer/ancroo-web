@@ -164,29 +164,34 @@ export function App() {
   ): Promise<InputDataPacket> {
     const packet: InputDataPacket = {};
 
-    const sources = Array.isArray(recipe.collect) ? recipe.collect : [];
-    for (const source of sources) {
-      switch (source) {
-        case "text_selection": {
-          const sel = await sendToTab<SelectionResultMessage>(tabId, { type: "GET_SELECTION" });
-          packet.text = sel?.text ?? "";
-          packet.html = sel?.html ?? "";
-          if (!packet.context) {
-            packet.context = { url: sel?.url ?? "", title: sel?.title ?? "" };
-          }
-          break;
-        }
-        case "page_text": {
-          const page = await sendToTab<PageTextResultMessage>(tabId, { type: "GET_PAGE_TEXT" });
-          packet.page_text = page?.text ?? "";
-          if (!packet.context) {
-            packet.context = { url: page?.url ?? "", title: page?.title ?? "" };
-          }
-          break;
-        }
-        case "manual_input":
-          packet.text = manualInputText;
-          break;
+    switch (recipe.input) {
+      case "selection_html": {
+        const sel = await sendToTab<SelectionResultMessage>(tabId, { type: "GET_SELECTION" });
+        packet.text = sel?.html ?? "";
+        packet.context = { url: sel?.url ?? "", title: sel?.title ?? "" };
+        break;
+      }
+      case "page_text": {
+        const page = await sendToTab<PageTextResultMessage>(tabId, { type: "GET_PAGE_TEXT" });
+        packet.text = page?.text ?? "";
+        packet.context = { url: page?.url ?? "", title: page?.title ?? "" };
+        break;
+      }
+      case "manual_input": {
+        packet.text = manualInputText;
+        const tab = await chrome.tabs.get(tabId).catch(() => null);
+        packet.context = { url: tab?.url ?? "", title: tab?.title ?? "" };
+        break;
+      }
+      // selection_plain plus any unknown/legacy input value (e.g. pre-1.0
+      // workflows still stored in the old `collect` format) fall back to
+      // plain selection text, so they keep working instead of running empty.
+      case "selection_plain":
+      default: {
+        const sel = await sendToTab<SelectionResultMessage>(tabId, { type: "GET_SELECTION" });
+        packet.text = sel?.text ?? "";
+        packet.context = { url: sel?.url ?? "", title: sel?.title ?? "" };
+        break;
       }
     }
     return packet;
@@ -292,7 +297,6 @@ export function App() {
         const response = await sendToTab<SelectionResultMessage>(tab.id, { type: "GET_SELECTION" });
         inputData = {
           text: response?.text ?? "",
-          html: response?.html ?? "",
           context: { url: response?.url ?? "", title: response?.title ?? "" },
         };
       }
@@ -321,7 +325,6 @@ export function App() {
           action !== "insert_text" &&
           action !== "insert_before" &&
           action !== "insert_after" &&
-          action !== "download_file" &&
           action !== "clipboard" &&
           action !== "copy_to_clipboard"
         ) {
@@ -589,16 +592,15 @@ export function App() {
                     const isPending = pendingWorkflow?.slug === workflow.slug;
                     const isExecuting = executing === workflow.slug;
 
-                    const collect = workflow.recipe?.collect;
-                    const inputLabel = collect
-                      ? collect.includes("manual_input")
-                        ? "manual"
-                        : collect.includes("page_text")
-                          ? "page"
-                          : collect.includes("text_selection")
-                            ? "selection"
-                            : null
-                      : null;
+                    const inputLabel = ((): string | null => {
+                      switch (workflow.recipe?.input) {
+                        case "manual_input": return "manual";
+                        case "page_text": return "page";
+                        case "selection_html": return "selection (html)";
+                        case "selection_plain": return "selection";
+                        default: return null;
+                      }
+                    })();
                     const outputLabel: string | null = (() => {
                       switch (workflow.output_action) {
                         case "replace_selection": return "replace";

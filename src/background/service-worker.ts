@@ -2,7 +2,7 @@ import { sendToTab } from "@/shared/tab-messaging";
 import { buildHotkeyBindings, HOTKEY_STORAGE_KEY } from "@/shared/hotkeys";
 import { executeWorkflowUnified } from "@/shared/executor";
 import { listWorkflowsUnified, fetchHotkeySettingsUnified } from "@/shared/workflow-provider";
-import type { ExtensionMessage, SelectionResultMessage, WriteClipboardResultMessage } from "@/shared/messages";
+import type { ExtensionMessage, SelectionResultMessage, PageTextResultMessage, WriteClipboardResultMessage } from "@/shared/messages";
 import type { Workflow, HistoryEntry, HotkeyBinding } from "@/shared/types";
 
 // Allow content scripts to read chrome.storage.session (required for hotkey bindings)
@@ -44,14 +44,8 @@ chrome.action.onClicked.addListener((tab) => {
   }
 });
 
-// Create context menu and refresh hotkeys on install/update
+// Refresh hotkeys and re-inject content scripts on install/update
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: "ancroo-run-workflow",
-    title: chrome.i18n.getMessage("contextMenuRun"),
-    contexts: ["selection"],
-  });
-
   refreshHotkeyBindings(3).catch(() => {});
 
   // Re-inject content scripts into existing tabs so hotkeys work immediately
@@ -62,12 +56,6 @@ chrome.runtime.onInstalled.addListener(() => {
 // Refresh hotkeys on browser startup (session storage is cleared on restart)
 chrome.runtime.onStartup.addListener(() => {
   refreshHotkeyBindings(3).catch(() => {});
-});
-
-// Handle context menu clicks
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (info.menuItemId !== "ancroo-run-workflow" || !tab?.id) return;
-  chrome.sidePanel.open({ tabId: tab.id });
 });
 
 // --- Hotkey management ---
@@ -142,8 +130,7 @@ async function handleHotkeyExecution(workflowSlug: string, tab?: chrome.tabs.Tab
   const workflow = workflows.find((w) => w.slug === workflowSlug);
   if (!workflow) return;
 
-  const collectSources = Array.isArray(workflow.recipe?.collect) ? workflow.recipe.collect : [];
-  const needsManual = collectSources.includes("manual_input");
+  const needsManual = workflow.recipe?.input === "manual_input";
   const needsComplexInput = false;
 
   // Manual/complex workflows need the side panel — store pending state.
@@ -154,16 +141,28 @@ async function handleHotkeyExecution(workflowSlug: string, tab?: chrome.tabs.Tab
   }
 
   // Simple text workflow: execute directly from background
-  let response;
+  // Collect the chosen input. Manual entry already returned above (needs side panel).
+  let inputText: string;
+  let context: { url: string; title: string };
   try {
-    response = await sendToTab<SelectionResultMessage>(tab.id, {
-      type: "GET_SELECTION",
-    } as ExtensionMessage);
+    if (workflow.recipe?.input === "page_text") {
+      const page = await sendToTab<PageTextResultMessage>(tab.id, {
+        type: "GET_PAGE_TEXT",
+      } as ExtensionMessage);
+      inputText = page?.text ?? "";
+      context = { url: page?.url ?? "", title: page?.title ?? "" };
+    } else {
+      const sel = await sendToTab<SelectionResultMessage>(tab.id, {
+        type: "GET_SELECTION",
+      } as ExtensionMessage);
+      inputText = workflow.recipe?.input === "selection_html" ? (sel?.html ?? "") : (sel?.text ?? "");
+      context = { url: sel?.url ?? "", title: sel?.title ?? "" };
+    }
   } catch {
     return;
   }
 
-  if (!response?.text) return;
+  if (!inputText) return;
 
   // Show processing toast
   await sendToTab(tab.id, {
@@ -174,16 +173,15 @@ async function handleHotkeyExecution(workflowSlug: string, tab?: chrome.tabs.Tab
 
   try {
     const result = await executeWorkflowUnified(workflow, {
-      text: response.text,
-      html: response.html,
-      context: { url: response.url, title: response.title },
+      text: inputText,
+      context,
     });
 
     await addToHistory({
       id: result.execution_id ?? crypto.randomUUID(),
       workflow_slug: workflow.slug,
       workflow_name: workflow.name,
-      input_preview: response.text.slice(0, 100),
+      input_preview: inputText.slice(0, 100),
       output_preview: (result.result?.text ?? "").slice(0, 100),
       output_full: result.result?.text ?? undefined,
       success: result.result?.success ?? false,
@@ -246,7 +244,7 @@ async function handleHotkeyExecution(workflowSlug: string, tab?: chrome.tabs.Tab
             duration: 3000,
           } as ExtensionMessage);
         }
-      } else if (action === "side_panel_only" || action === "notification") {
+      } else if (action === "side_panel_only") {
         await chrome.storage.session.set({
           pendingResult: {
             text: result.result.text,

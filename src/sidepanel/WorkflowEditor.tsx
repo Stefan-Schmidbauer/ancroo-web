@@ -6,10 +6,11 @@ import type { LLMProviderConfig } from "@/shared/settings";
 import { DEFAULT_MODELS } from "./ProviderSettings";
 import { fetchModels, type ModelInfo } from "@/shared/llm/models";
 
-const INPUT_SOURCES: { value: CollectionRecipe["collect"][number]; label: string }[] = [
-  { value: "text_selection", label: "Text Selection" },
-  { value: "manual_input", label: "Manual Input" },
-  { value: "page_text", label: "Page Text" },
+const INPUT_SOURCES: { value: CollectionRecipe["input"]; label: string }[] = [
+  { value: "selection_html", label: "Selection (formatted)" },
+  { value: "selection_plain", label: "Selection (plain text)" },
+  { value: "page_text", label: "Whole page" },
+  { value: "manual_input", label: "Manual entry" },
 ];
 
 const OUTPUT_ACTIONS = [
@@ -48,8 +49,8 @@ export function WorkflowEditor({ workflow, providers, categories = DEFAULT_CATEG
   const [model, setModel] = useState(workflow?.model ?? "");
   const [outputAction, setOutputAction] = useState(workflow?.output_action ?? "side_panel_only");
   const [hotkey, setHotkey] = useState(workflow?.default_hotkey ?? "");
-  const [inputSource, setInputSource] = useState<CollectionRecipe["collect"][number]>(
-    workflow?.recipe?.collect?.[0] ?? "text_selection",
+  const [inputSource, setInputSource] = useState<CollectionRecipe["input"]>(
+    workflow?.recipe?.input ?? "selection_plain",
   );
   const [category, setCategory] = useState<WorkflowCategory>(
     (workflow?.category as WorkflowCategory) ?? "Custom",
@@ -107,7 +108,7 @@ export function WorkflowEditor({ workflow, providers, categories = DEFAULT_CATEG
       llm_model_name: model,
       stt_model_name: null,
       tool_name: null,
-      recipe: { collect: [inputSource] },
+      recipe: { input: inputSource },
       output_action: outputAction,
       prompt_template: promptTemplate,
       provider_id: providerId,
@@ -183,9 +184,7 @@ export function WorkflowEditor({ workflow, providers, categories = DEFAULT_CATEG
               placeholder={"Summarize the following text:\n\n{text}"}
             />
             <p class="text-xs text-gray-400 mt-0.5">
-              {inputSource === "text_selection" && <>Variables: {"{text}"} {"{html}"} {"{url}"} {"{title}"}</>}
-              {inputSource === "manual_input" && <>Variables: {"{text}"} {"{url}"} {"{title}"}</>}
-              {inputSource === "page_text" && <>Variables: {"{page_text}"} {"{url}"} {"{title}"}</>}
+              Variables: {"{text}"} {"{url}"} {"{title}"}
             </p>
           </div>
           <div>
@@ -280,7 +279,7 @@ export function WorkflowEditor({ workflow, providers, categories = DEFAULT_CATEG
               value={inputSource}
               onChange={(e) =>
                 setInputSource(
-                  (e.target as HTMLSelectElement).value as CollectionRecipe["collect"][number],
+                  (e.target as HTMLSelectElement).value as CollectionRecipe["input"],
                 )
               }
               class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"

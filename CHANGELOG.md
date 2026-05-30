@@ -5,7 +5,19 @@ All notable changes to the Ancroo browser extension will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.0] — 2026-05-30
+
+### Changed
+
+- Action input is now a single explicit choice — Selection (formatted), Selection (plain text), Whole page, or Manual entry — instead of a multi-select source list. Whatever you pick always feeds the `{text}` variable, so a prompt reads the same regardless of where its text comes from. `{url}` and `{title}` are always available
+- Manual entry actions now also expose `{url}` and `{title}` from the active tab (previously left empty)
+
+### Removed
+
+- `{html}` and `{page_text}` template variables — the selected input now always populates `{text}`; only `{text}`, `{url}`, and `{title}` remain
+- Context menu entry "Run with Ancroo" and the `contextMenus` permission — it only opened the side panel (identical to the toolbar icon and `Alt+Shift+Y`) without selecting or running an action, so it added no behaviour over the existing entry points
+- Unused `clipboardRead` permission — no code reads the clipboard; the `{clipboard}` template variable no longer exists
+- Dead output-action branches left over from removed features (`download_file`, `notification`)
 
 ## [0.5.2] — 2026-05-29
 

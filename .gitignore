@@ -30,3 +30,6 @@ store/*.html
 
 # Local notes (not for public repo)
 notes/
+
+# Blog
+blog/

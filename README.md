@@ -8,6 +8,8 @@
 [![pnpm](https://img.shields.io/badge/pnpm-F69220?logo=pnpm&logoColor=white)](https://pnpm.io/)
 [![Chrome Extension](https://img.shields.io/badge/Chrome_Extension-MV3-4285F4?logo=googlechrome&logoColor=white)](https://developer.chrome.com/docs/extensions/)
 
+**Point. Prompt. Done.**
+
 AI Prompt Launcher for your Browser. Point at anything on a page, run an AI prompt, get results — without leaving the tab.
 
 Manifest V3 browser extension built with Preact and TypeScript. Calls LLM providers directly — no server or account needed.
@@ -17,9 +19,8 @@ Manifest V3 browser extension built with Preact and TypeScript. Calls LLM provid
 ## Features
 
 - **Side panel UI** — browse and trigger actions from a side panel (`Alt+Shift+Y` or click the extension icon)
-- **Flexible input** — feed selected text (plain or HTML), manual input, or the full page text into your prompt
+- **Flexible input** — pick one input per action: Selection (formatted), Selection (plain text), Whole page, or Manual entry. Whatever you choose feeds the `{text}` variable in your prompt; `{url}` and `{title}` are always available too
 - **Hotkeys** — keyboard shortcuts trigger actions instantly from any page
-- **Context menu** — select text on any page, right-click "Run with Ancroo", and get AI results
 - **Output actions** — results can replace selected text, copy to clipboard, insert before/after, or show in panel
 - **Execution history** — last 50 results are stored locally for quick access and re-use
 - **Multiple LLM providers** — OpenAI, Anthropic, Google Gemini, Ollama (local), OpenRouter, or any OpenAI-compatible endpoint

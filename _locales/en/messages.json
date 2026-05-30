@@ -10,9 +10,5 @@
   "openSidePanel": {
     "message": "Open Ancroo side panel",
     "description": "Description for the keyboard shortcut that opens the side panel"
-  },
-  "contextMenuRun": {
-    "message": "Run with Ancroo",
-    "description": "Context menu item label for running a workflow on selected text"
   }
 }

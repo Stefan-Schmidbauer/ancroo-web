@@ -20,6 +20,9 @@ export function AboutPanel({ onClose }: { onClose: () => void }) {
           />
           <h2 class="text-lg font-bold text-gray-900">Ancroo</h2>
           <p class="text-sm text-gray-500 mt-1">AI Prompt Launcher for your Browser</p>
+          <p class="text-xs font-semibold uppercase tracking-wider text-gray-400 mt-2">
+            Point. Prompt. Done.
+          </p>
         </div>
 
         <div class="bg-white rounded-lg border divide-y">

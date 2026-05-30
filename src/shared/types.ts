@@ -1,13 +1,11 @@
-/** Collection recipe — instructions on what data to collect. */
+/** Collection recipe — which single input feeds the {text} variable. */
 export interface CollectionRecipe {
-  collect: ("text_selection" | "manual_input" | "page_text")[];
+  input: "selection_html" | "selection_plain" | "page_text" | "manual_input";
 }
 
-/** Data packet passed to the LLM executor. */
+/** Data packet passed to the LLM executor. The chosen input always lands in `text`. */
 export interface InputDataPacket {
   text?: string;
-  html?: string;
-  page_text?: string;
   context?: { url: string; title: string };
 }
 
@@ -44,7 +42,7 @@ export interface Workflow {
 
 /** Local workflow stored in chrome.storage. Extends Workflow so existing UI works unchanged. */
 export interface LocalWorkflow extends Workflow {
-  /** Prompt template with {text}, {html}, {url}, {title}, {fields} placeholders. */
+  /** Prompt template with {text}, {url}, {title} placeholders. */
   prompt_template: string;
   /** ID of the LLMProviderConfig to use. */
   provider_id: string;
@@ -118,6 +116,6 @@ export interface ParsedHotkey {
 export interface HotkeyBinding {
   parsed: ParsedHotkey;
   workflow_slug: string;
-  /** True when the workflow requires the side panel (audio, file, clipboard, form_fields). */
+  /** True when the workflow output needs the side panel (e.g. side_panel_only). */
   needsSidePanel: boolean;
 }

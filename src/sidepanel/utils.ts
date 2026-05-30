@@ -3,9 +3,7 @@ import type { Workflow } from "@/shared/types";
 
 /** Check if a workflow requires manual text input. */
 export function needsManualInput(workflow: Workflow): boolean {
-  return (
-    Array.isArray(workflow.recipe?.collect) && workflow.recipe.collect.includes("manual_input")
-  );
+  return workflow.recipe?.input === "manual_input";
 }
 
 /** Format a timestamp as a relative time string. */

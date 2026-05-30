@@ -1,9 +1,15 @@
 # Chrome Web Store Listing — Ancroo
 
+## Tagline
+
+```
+Point. Prompt. Done.
+```
+
 ## Short Description (132 chars max)
 
 ```
-AI Prompt Launcher for your Browser. Set the input on any page, run an AI prompt, get results — with any LLM API.
+Point. Prompt. Done. Run AI prompts on any page with your own LLM — no tab switching, no copy-paste.
 ```
 
 ## Detailed Description
@@ -18,9 +24,8 @@ Connect to OpenAI, Anthropic, Google Gemini, Ollama, OpenRouter, or any OpenAI-c
 POINT. PROMPT. DONE.
 
 - Side panel UI — click the extension icon or press Alt+Shift+Y to open
-- Text selection — select text on any page, right-click "Run with Ancroo", get AI results
-- Hotkeys — trigger actions instantly from any page
-- Flexible input — feed selected text (plain or HTML), manual input, or the full page text into your prompt
+- Hotkeys — select text, trigger an action with a keyboard shortcut, get AI results
+- Flexible input — pick one input per action: Selection (formatted), Selection (plain text), Whole page, or Manual entry. Your choice fills the {text} variable in the prompt; {url} and {title} are always available too
 - Output actions — replace selected text, copy to clipboard, insert before/after, or show in panel
 - Execution history — last 50 results stored locally
 - Workflow categories — organise actions into named categories with icons; collapsible groups in the side panel
@@ -67,10 +72,9 @@ https://github.com/ancroo/ancroo-web/blob/main/PRIVACY_POLICY.md
 | #   | File                                | Content                       |
 | --- | ----------------------------------- | ----------------------------- |
 | 1   | `store/ancroo.png`                  | Side panel with action list   |
-| 2   | `store/ancroo_dm_context.png`       | Context menu on selected text |
-| 3   | `store/ancroo_dm_fixed_grammer.png` | Action result (Fix Grammar)   |
-| 4   | `store/ancroo_dm_settings.png`      | Provider configuration        |
-| 5   | `store/ancroo_dm_new_workflow.png`  | Action editor                 |
+| 2   | `store/ancroo_dm_fixed_grammer.png` | Action result (Fix Grammar)   |
+| 3   | `store/ancroo_dm_settings.png`      | Provider configuration        |
+| 4   | `store/ancroo_dm_new_workflow.png`  | Action editor                 |
 
 ## Promotional Images
 

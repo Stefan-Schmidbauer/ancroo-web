@@ -27,9 +27,6 @@ export function parseHotkey(hotkeyStr: string): ParsedHotkey | null {
   };
 }
 
-/** Sources that require the side panel UI to collect input. */
-const SIDE_PANEL_SOURCES = new Set(["manual_input"]);
-
 /**
  * Convert server hotkey mappings into parsed bindings for the content script.
  * Filters out disabled hotkeys and those without a hotkey string.
@@ -52,8 +49,8 @@ export function buildHotkeyBindings(
     if (!parsed) continue;
 
     const workflow = workflowMap.get(mapping.workflow_slug);
-    const collectSources = Array.isArray(workflow?.recipe?.collect) ? workflow.recipe.collect : [];
-    const needsSidePanel = collectSources.some((s) => SIDE_PANEL_SOURCES.has(s));
+    // Manual entry is the only input that needs the side panel UI to collect input.
+    const needsSidePanel = workflow?.recipe?.input === "manual_input";
 
     bindings.push({ parsed, workflow_slug: mapping.workflow_slug, needsSidePanel });
   }
