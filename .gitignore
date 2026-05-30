@@ -18,14 +18,10 @@ dist/
 # Test output
 coverage/
 
-# Promo image sources
-store/*.html
-
 # Claude Code
 .claude/
 
-# Local notes (not for public repo)
+# Local-only marketing & notes (not for public repo)
 notes/
-
-# Blog
+store/
 blog/
