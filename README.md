@@ -14,7 +14,7 @@ AI Prompt Launcher for your Browser. Point at anything on a page, run an AI prom
 
 Manifest V3 browser extension built with Preact and TypeScript. Calls LLM providers directly — no server or account needed.
 
-![Ancroo Admin Workflows and Sidepanel ](aw-workflows.png)
+![Ancroo](assets/screenshots/main.png)
 
 ## Features
 
@@ -25,11 +25,13 @@ Manifest V3 browser extension built with Preact and TypeScript. Calls LLM provid
 - **Execution history** — last 50 results are stored locally for quick access and re-use
 - **Multiple LLM providers** — OpenAI, Anthropic, Google Gemini, Ollama (local), OpenRouter, or any OpenAI-compatible endpoint
 - **Starter actions** — six ready-to-use actions (Summarize, Translate, Rewrite, Explain, Fix Grammar, Ask AI) are created automatically
-- **Workflow categories** — organise actions into named categories (Starter, Writing, Coding, …) with icons; collapsible groups in the side panel
+- **Action categories** — organise actions into named categories (Starter, Writing, Coding, …) with icons; collapsible groups in the side panel
 - **Action editor** — create and manage actions with custom templates, model selection, system prompt, max tokens, hotkey, and category assignment
 - **Model browser** — auto-detects available models from your provider
 - **Backup & restore** — export all actions and provider settings to a JSON file; import them on any device or after reinstalling
 - **No server required** — everything runs in the browser extension
+
+![Ancroo actions](assets/screenshots/new-action-sidepanel.png)
 
 ## Install
 
