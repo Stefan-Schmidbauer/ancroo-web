@@ -5,6 +5,18 @@ All notable changes to the Ancroo browser extension will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] — 2026-05-30
+
+### Security
+
+- Gemini model listing now sends the API key via the `x-goog-api-key` header instead of the URL query string, so keys no longer leak into logs, history, or referrers
+- Backup import now validates provider entries (`id`, `name`, `api_key`, and `type` against the known enum) and rejects malformed or crafted backup files
+- The model name is URL-encoded in the Gemini request URL to prevent manipulation via crafted model names
+
+### Removed
+
+- Orphaned `SECURITY.md` — it described backend/OAuth2/context-menu features that do not exist in this direct-mode extension; key storage and data flow are documented in the README
+
 ## [1.0.0] — 2026-05-30
 
 ### Changed
