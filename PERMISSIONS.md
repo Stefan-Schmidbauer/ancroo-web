@@ -13,19 +13,19 @@ both the dashboard and this file in the same change.
 
 **Code:** content-script messaging + active-tab context (`src/background/service-worker.ts`, `src/content/`)
 
-> Required to read the currently active tab's URL and title, which are used as context variables in AI workflows (e.g., "Summarize this page"). Also used to send messages to the content script in the active tab for text selection and result insertion.
+> Required to read the currently active tab's URL and title, which are used as context variables in AI actions (e.g., "Summarize this page"). Also used to send messages to the content script in the active tab for text selection and result insertion.
 
 ## `sidePanel`
 
 **Code:** `src/sidepanel/` (`manifest.json` → `side_panel`)
 
-> The entire extension UI is rendered in a Chrome side panel. Users open it to select workflows, view results, configure settings, and browse execution history.
+> The entire extension UI is rendered in a Chrome side panel. Users open it to select actions, view results, configure settings, and browse execution history.
 
 ## `storage`
 
 **Code:** `chrome.storage.local` throughout (`src/background/service-worker.ts`, `src/shared/local-workflows.ts`, history in `service-worker.ts:281`)
 
-> Stores all user data locally in chrome.storage.local: extension settings, LLM provider configuration, API keys, workflow definitions, hotkey bindings, and execution history. No data is synced or sent to external servers by the extension itself.
+> Stores all user data locally in chrome.storage.local: extension settings, LLM provider configuration, API keys, action definitions, hotkey bindings, and execution history. No data is synced or sent to external servers by the extension itself.
 
 > ⚠️ Do NOT mention "OAuth2 tokens" here — that belongs to the backend variant (ancroo-web-backend). This extension is Direct-Mode only and has no OAuth.
 
@@ -33,21 +33,21 @@ both the dashboard and this file in the same change.
 
 **Code:** `src/content/text-inserter.ts`, content-script injection
 
-> Used to inject a content script into the active tab when the user triggers a workflow. The content script reads selected text from the page and inserts workflow results back into editable fields (e.g., replacing selected text with a corrected version).
+> Used to inject a content script into the active tab when the user triggers an action. The content script reads selected text from the page and inserts action results back into editable fields (e.g., replacing selected text with a corrected version).
 
 ## `clipboardWrite`
 
 **Code:** `copy_to_clipboard` action (`src/shared/types.ts:64`), `src/content/text-inserter.ts:211`
 
-> Workflows can copy results to the clipboard as an output action. When a workflow is configured with the "copy_to_clipboard" action, the AI-processed result is written to the clipboard so the user can paste it elsewhere.
+> Actions can copy results to the clipboard as an output type. When an action is configured with the "copy_to_clipboard" output, the AI-processed result is written to the clipboard so the user can paste it elsewhere.
 
 ## `downloads`
 
 **Code:** backup export only — `src/shared/backup.ts:68` (`chrome.downloads.download(...)`)
 
-> Used only by the backup feature. When the user clicks Export in settings, the extension serializes their workflows, categories, and provider settings to a JSON file and saves it via chrome.downloads.download(). Downloads are triggered only on explicit user action; no remote content is downloaded.
+> Used only by the backup feature. When the user clicks Export in settings, the extension serializes their actions, categories, and provider settings to a JSON file and saves it via chrome.downloads.download(). Downloads are triggered only on explicit user action; no remote content is downloaded.
 
-> ⚠️ There is no `download_file` workflow action — do NOT describe generic "file output". The only consumer of this permission is the backup export.
+> ⚠️ There is no `download_file` action — do NOT describe generic "file output". The only consumer of this permission is the backup export.
 
 ## `declarativeNetRequestWithHostAccess`
 

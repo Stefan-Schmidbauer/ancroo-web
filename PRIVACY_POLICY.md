@@ -6,7 +6,7 @@
 
 ## Summary
 
-Ancroo has no servers and no analytics — the developer never receives your data, and it is never sold. Your data stays in your browser, with one exception: the text you submit to a workflow (and the API key that authenticates the request) is sent directly to the LLM provider you configure.
+Ancroo has no servers and no analytics — the developer never receives your data, and it is never sold. Your data stays in your browser, with one exception: the text you submit to an action (and the API key that authenticates the request) is sent directly to the LLM provider you configure.
 
 ## Data Storage
 
@@ -16,9 +16,9 @@ All data is stored locally in your browser using `chrome.storage.local`:
 | ----------------- | --------------------------------------------------- | ---------------------- |
 | Settings          | Extension configuration (provider URL, model)       | `chrome.storage.local` |
 | API keys          | Authentication with LLM providers                   | `chrome.storage.local` |
-| Workflows         | User-created workflow definitions                   | `chrome.storage.local` |
+| Actions           | User-created action definitions                     | `chrome.storage.local` |
 | Hotkey bindings   | Keyboard shortcut assignments                       | `chrome.storage.local` |
-| Execution history | Last 50 workflow results for quick access           | `chrome.storage.local` |
+| Execution history | Last 50 action results for quick access             | `chrome.storage.local` |
 
 `chrome.storage.local` is sandboxed per extension — websites and other extensions cannot access it. The storage is not encrypted on disk; anyone with access to your browser profile can read it.
 
@@ -37,7 +37,7 @@ Ancroo does **not** collect:
 
 - Analytics or usage statistics
 - Telemetry or crash reports
-- Browsing history or page content (beyond what you explicitly select for a workflow)
+- Browsing history or page content (beyond what you explicitly select for an action)
 - Personally identifiable information
 - Advertising data
 
@@ -45,12 +45,12 @@ Ancroo does **not** collect:
 
 | Permission                            | Why it is needed                                                   |
 | ------------------------------------- | ------------------------------------------------------------------ |
-| `activeTab`                           | Read the active tab's URL/title and message its content script when you run a workflow |
-| `sidePanel`                           | Display the workflow side panel UI                                 |
-| `storage`                             | Store settings, workflows, history, and hotkey bindings locally    |
+| `activeTab`                           | Read the active tab's URL/title and message its content script when you run an action |
+| `sidePanel`                           | Display the side panel UI                                          |
+| `storage`                             | Store settings, actions, history, and hotkey bindings locally      |
 | `scripting`                           | Inject content scripts for text selection and result insertion     |
-| `clipboardWrite`                      | Copy a workflow result to the clipboard (copy-to-clipboard output action) |
-| `downloads`                           | Save the backup file when you export your workflows/settings to JSON |
+| `clipboardWrite`                      | Copy an action result to the clipboard (copy-to-clipboard output action) |
+| `downloads`                           | Save the backup file when you export your actions/settings to JSON |
 | `declarativeNetRequestWithHostAccess` | Override the Origin header for local Ollama CORS compatibility      |
 
 Host permissions for known LLM APIs (OpenAI, Anthropic, Gemini, OpenRouter) and localhost are declared in the manifest. Custom provider URLs are requested via `chrome.permissions.request()` only when needed.
