@@ -1,12 +1,12 @@
 # Privacy Policy — Ancroo Browser Extension
 
-**Effective date:** 2026-05-27
+**Effective date:** 2026-05-31
 **Extension name:** Ancroo
 **Developer:** Stefan Schmidbauer
 
 ## Summary
 
-Ancroo does not collect, transmit, or sell any personal data. All user data stays in your browser or is sent only to LLM providers you explicitly configure.
+Ancroo has no servers and no analytics — the developer never receives your data, and it is never sold. Your data stays in your browser, with one exception: the text you submit to a workflow (and the API key that authenticates the request) is sent directly to the LLM provider you configure.
 
 ## Data Storage
 
@@ -26,7 +26,8 @@ All data is stored locally in your browser using `chrome.storage.local`:
 
 Ancroo only sends data to LLM providers **you** configure:
 
-- Your input text and prompts are sent to the LLM provider you selected (e.g. OpenAI, Anthropic, Google Gemini, Ollama). API keys are sent only to the corresponding provider endpoint.
+- Your input text and prompts are sent to the LLM provider you selected (e.g. OpenAI, Anthropic, Google Gemini, OpenRouter, Ollama).
+- Your API keys are stored locally and sent only to the corresponding provider endpoint to authenticate your requests — never to the developer or any other party.
 
 No data is sent to the extension developer, Ancroo servers, or any third party beyond your configured providers.
 
@@ -44,14 +45,13 @@ Ancroo does **not** collect:
 
 | Permission                            | Why it is needed                                                   |
 | ------------------------------------- | ------------------------------------------------------------------ |
-| `activeTab`                           | Access the current tab for context menus and side panel            |
+| `activeTab`                           | Read the active tab's URL/title and message its content script when you run a workflow |
 | `sidePanel`                           | Display the workflow side panel UI                                 |
 | `storage`                             | Store settings, workflows, history, and hotkey bindings locally    |
-| `scripting`                           | Inject content scripts for text selection and hotkey handling      |
-| `clipboardRead` / `clipboardWrite`    | Read/write clipboard when a workflow uses clipboard input/output   |
-| `contextMenus`                        | Add "Run with Ancroo" to the right-click menu                      |
-| `downloads`                           | Download files produced by workflow output actions                 |
-| `declarativeNetRequestWithHostAccess` | Override request headers for local Ollama CORS compatibility       |
+| `scripting`                           | Inject content scripts for text selection and result insertion     |
+| `clipboardWrite`                      | Copy a workflow result to the clipboard (copy-to-clipboard output action) |
+| `downloads`                           | Save the backup file when you export your workflows/settings to JSON |
+| `declarativeNetRequestWithHostAccess` | Override the Origin header for local Ollama CORS compatibility      |
 
 Host permissions for known LLM APIs (OpenAI, Anthropic, Gemini, OpenRouter) and localhost are declared in the manifest. Custom provider URLs are requested via `chrome.permissions.request()` only when needed.
 
