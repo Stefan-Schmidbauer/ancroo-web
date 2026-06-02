@@ -12,11 +12,14 @@ const PROVIDER_TYPES: { value: LLMProviderType; label: string }[] = [
   { value: "openai-compatible", label: "OpenAI-Compatible" },
 ];
 
+// Displayed API endpoints — kept in sync with the adapters' actual base URLs.
+// OpenAI-style providers include the version segment ("/v1"); Anthropic and
+// Ollama use a host-root base to which the adapter appends the version path.
 const DEFAULT_BASE_URLS: Partial<Record<LLMProviderType, string>> = {
-  openai: "https://api.openai.com",
+  openai: "https://api.openai.com/v1",
   anthropic: "https://api.anthropic.com",
-  gemini: "https://generativelanguage.googleapis.com",
-  openrouter: "https://openrouter.ai/api",
+  gemini: "https://generativelanguage.googleapis.com/v1beta",
+  openrouter: "https://openrouter.ai/api/v1",
   ollama: "http://localhost:11434",
 };
 
@@ -39,7 +42,11 @@ export function ProviderSettings({ providers, onSave }: Props) {
   const [editing, setEditing] = useState<LLMProviderConfig | null>(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string; count: number } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{
+    id: string;
+    name: string;
+    count: number;
+  } | null>(null);
 
   function startAdd() {
     setEditing({
@@ -111,14 +118,21 @@ export function ProviderSettings({ providers, onSave }: Props) {
           return;
         }
       }
-      const { callLLM } = await import("@/shared/llm");
       const testProvider =
         editing.type === "ollama" && !editing.api_key ? { ...editing, api_key: "ollama" } : editing;
-      await callLLM(testProvider, {
-        model: DEFAULT_MODELS[editing.type] || "gpt-4o",
-        user_prompt: "Reply with exactly: OK",
-        max_tokens: 5,
-      });
+      if (editing.type === "openai-compatible") {
+        // No model is configured on the provider, so verify connectivity and
+        // auth via GET /models instead of guessing a model name.
+        const { pingOpenAI } = await import("@/shared/llm/openai");
+        await pingOpenAI(testProvider);
+      } else {
+        const { callLLM } = await import("@/shared/llm");
+        await callLLM(testProvider, {
+          model: DEFAULT_MODELS[editing.type] || "gpt-4o",
+          user_prompt: "Reply with exactly: OK",
+          max_tokens: 5,
+        });
+      }
       setTestResult("success");
     } catch (err) {
       setTestResult(err instanceof Error ? err.message : "Connection failed");
@@ -191,11 +205,15 @@ export function ProviderSettings({ providers, onSave }: Props) {
               }
               class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
               placeholder={
-                editing.type === "ollama" ? "http://localhost:11434" : "https://api.example.com"
+                editing.type === "ollama" ? "http://localhost:11434" : "http://localhost:1234/v1"
               }
             />
-            {editing.type === "ollama" && (
+            {editing.type === "ollama" ? (
               <p class="text-xs text-gray-400 mt-0.5">Leave empty for localhost:11434</p>
+            ) : (
+              <p class="text-xs text-gray-400 mt-0.5">
+                Include the version path (e.g. /v1) — the endpoint is appended automatically.
+              </p>
             )}
           </div>
         ) : DEFAULT_BASE_URLS[editing.type] ? (
@@ -252,9 +270,8 @@ export function ProviderSettings({ providers, onSave }: Props) {
       {pendingDelete && (
         <div class="bg-red-50 border border-red-200 rounded-lg p-3 space-y-2">
           <p class="text-xs text-red-700">
-            <span class="font-medium">{pendingDelete.name}</span> is used by{" "}
-            {pendingDelete.count} action{pendingDelete.count !== 1 ? "s" : ""}. They will stop
-            working after deletion.
+            <span class="font-medium">{pendingDelete.name}</span> is used by {pendingDelete.count}{" "}
+            action{pendingDelete.count !== 1 ? "s" : ""}. They will stop working after deletion.
           </p>
           <div class="flex gap-2">
             <button

@@ -19,7 +19,7 @@ export async function callLLM(
     case "openai-compatible":
       return callOpenAI(provider, request);
     case "openrouter":
-      return callOpenAI({ ...provider, base_url: "https://openrouter.ai/api" }, request);
+      return callOpenAI({ ...provider, base_url: "https://openrouter.ai/api/v1" }, request);
     case "ollama":
       return callOllama(provider, request);
     case "anthropic":

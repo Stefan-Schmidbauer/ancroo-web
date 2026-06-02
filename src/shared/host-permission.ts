@@ -24,7 +24,9 @@ function toOriginPattern(url: string): string {
  */
 export async function ensureHostPermission(url: string): Promise<boolean> {
   const pattern = toOriginPattern(url);
-  const already = await chrome.permissions.contains({ origins: [pattern] });
-  if (already) return true;
+  // Call request() directly within the user gesture. If the permission is
+  // already granted it resolves true without prompting. An intervening
+  // permissions.contains() await would consume the user gesture and make the
+  // request() call fail ("must be called during a user gesture").
   return chrome.permissions.request({ origins: [pattern] });
 }

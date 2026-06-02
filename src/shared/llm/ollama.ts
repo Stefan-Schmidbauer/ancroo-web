@@ -11,8 +11,11 @@ import type { LLMRequest, LLMResponse } from "./types";
 const DEFAULT_BASE_URL = "http://localhost:11434";
 const OLLAMA_RULE_ID = 9999;
 
-/** Ensure a declarativeNetRequest rule is active that overrides Origin for this Ollama URL. */
-async function ensureOriginRule(baseUrl: string): Promise<void> {
+/** Ensure a declarativeNetRequest rule is active that overrides Origin for this Ollama URL.
+ *  Exported so the model-list fetch (/api/tags) gets the same Origin override as the
+ *  chat call — setting the Origin header directly on fetch() is silently dropped by the
+ *  browser (forbidden header). */
+export async function ensureOriginRule(baseUrl: string): Promise<void> {
   try {
     const rule: chrome.declarativeNetRequest.Rule = {
       id: OLLAMA_RULE_ID,

@@ -1,6 +1,8 @@
 /** Fetch available models from LLM providers. */
 
 import type { LLMProviderConfig } from "../settings";
+import { resolveBaseUrl } from "./openai";
+import { ensureOriginRule } from "./ollama";
 
 export interface ModelInfo {
   id: string;
@@ -16,7 +18,7 @@ export async function fetchModels(provider: LLMProviderConfig): Promise<ModelInf
     case "openai-compatible":
       return fetchOpenAIModels(provider);
     case "openrouter":
-      return fetchOpenAIModels({ ...provider, base_url: "https://openrouter.ai/api" });
+      return fetchOpenAIModels({ ...provider, base_url: "https://openrouter.ai/api/v1" });
     case "gemini":
       return fetchGeminiModels(provider);
     case "anthropic":
@@ -28,9 +30,10 @@ export async function fetchModels(provider: LLMProviderConfig): Promise<ModelInf
 
 async function fetchOllamaModels(provider: LLMProviderConfig): Promise<ModelInfo[]> {
   const baseUrl = (provider.base_url || "http://localhost:11434").replace(/\/+$/, "");
-  const res = await fetch(`${baseUrl}/api/tags`, {
-    headers: { Origin: baseUrl },
-  });
+  // Override the Origin header via declarativeNetRequest (the chat path does the
+  // same); a fetch() Origin header would be dropped as a forbidden header.
+  await ensureOriginRule(baseUrl);
+  const res = await fetch(`${baseUrl}/api/tags`);
   if (!res.ok) throw new Error(`Ollama error ${res.status}`);
   const data = await res.json();
   return (data.models ?? []).map((m: { name: string }) => ({
@@ -40,12 +43,12 @@ async function fetchOllamaModels(provider: LLMProviderConfig): Promise<ModelInfo
 }
 
 async function fetchOpenAIModels(provider: LLMProviderConfig): Promise<ModelInfo[]> {
-  const baseUrl = (provider.base_url || "https://api.openai.com").replace(/\/+$/, "");
   const headers: Record<string, string> = {};
   if (provider.api_key && provider.api_key !== "ollama") {
     headers.Authorization = `Bearer ${provider.api_key}`;
   }
-  const res = await fetch(`${baseUrl}/v1/models`, { headers });
+  // Base URL already includes the version segment (e.g. ".../v1"); append only the path.
+  const res = await fetch(`${resolveBaseUrl(provider)}/models`, { headers });
   if (!res.ok) throw new Error(`API error ${res.status}`);
   const data = await res.json();
   return (data.data ?? [])
