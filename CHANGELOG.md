@@ -5,6 +5,16 @@ All notable changes to the Ancroo browser extension will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] — 2026-06-02
+
+### Fixed
+
+- OpenAI-compatible providers (LM Studio, vLLM, …): the Base URL now follows the OpenAI convention and includes the version segment (e.g. `/v1`), and the adapter appends only the endpoint path. Entering a `/v1` base no longer produces a doubled `/v1/v1/…` path, so chat requests work
+- The model list in the action editor now loads for OpenAI-compatible providers (it was affected by the same doubled-path bug)
+- The provider connection test for OpenAI-compatible providers verifies via `GET /models` instead of a guessed model name, so a correct configuration no longer reports a false failure (and a wrong one no longer falsely succeeds)
+- The Ollama model list (`/api/tags`) now applies the same Origin override as chat requests via declarativeNetRequest; the previous `Origin` request header was silently dropped by the browser
+- The host-permission prompt for custom provider URLs is now requested within the user gesture, so the permission dialog reliably appears on the first save or test
+
 ## [1.0.2] — 2026-05-30
 
 ### Security
