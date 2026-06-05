@@ -68,8 +68,7 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
     <div class="flex flex-col h-screen p-4">
       <h1 class="text-lg font-bold mb-1">Ancroo Setup</h1>
       <p class="text-xs text-gray-500 mb-3">
-        Add at least one LLM provider to get started. Starter actions will be created
-        automatically.
+        Add at least one LLM provider to get started. Starter actions will be created automatically.
       </p>
 
       <div class="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
@@ -95,7 +94,7 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
       </div>
 
       <p class="text-xs font-semibold text-gray-500 mb-2">Or add a provider manually</p>
-      <div class="flex-1 overflow-y-auto">
+      <div class="flex-1 overflow-y-auto min-h-0">
         <ProviderSettings providers={providers} onSave={handleSaveProviders} />
       </div>
 

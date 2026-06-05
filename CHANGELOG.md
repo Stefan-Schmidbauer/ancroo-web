@@ -5,6 +5,19 @@ All notable changes to the Ancroo browser extension will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — 2026-06-05
+
+### Added
+
+- Follow-up input for manual-entry actions — after a result is shown in the side panel, send another message directly from the result view to iterate on the output without navigating back
+
+### Fixed
+
+- OpenAI-compatible providers: saving and testing a provider now requires a Base URL, preventing silent 401 errors caused by accidentally targeting api.openai.com
+- Content script injection errors on tabs that were open before the extension was installed now surface a clear "reload this tab" message instead of a generic failure
+- Manual-entry actions can now run on `chrome://`, `chrome-extension://`, and `about:` pages — they do not need a content script for input
+- The provider list in the setup screen now scrolls correctly on small viewports
+
 ## [1.0.3] — 2026-06-02
 
 ### Fixed
@@ -129,7 +142,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Execution history (last 50 entries)
 - OAuth2 PKCE authentication for multi-user backends
 
-[Unreleased]: https://github.com/ancroo/ancroo-web/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/ancroo/ancroo-web/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/ancroo/ancroo-web/compare/v1.0.3...v1.1.0
+[1.0.3]: https://github.com/ancroo/ancroo-web/compare/v1.0.2...v1.0.3
+[1.0.2]: https://github.com/ancroo/ancroo-web/compare/v1.0.0...v1.0.2
+[1.0.0]: https://github.com/ancroo/ancroo-web/compare/v0.5.2...v1.0.0
 [0.5.2]: https://github.com/ancroo/ancroo-web/compare/v0.5.1...v0.5.2
 [0.5.0]: https://github.com/ancroo/ancroo-web/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/ancroo/ancroo-web/compare/v0.3.0...v0.4.0

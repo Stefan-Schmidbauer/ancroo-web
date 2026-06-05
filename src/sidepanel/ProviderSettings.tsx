@@ -83,6 +83,9 @@ export function ProviderSettings({ providers, onSave }: Props) {
     if (!editing) return;
     // Ollama doesn't require an API key
     if (editing.type !== "ollama" && !editing.api_key.trim()) return;
+    // openai-compatible requires a base URL — without it the request silently
+    // hits api.openai.com and returns a confusing 401.
+    if (editing.type === "openai-compatible" && !editing.base_url?.trim()) return;
 
     // Request host permission for custom URLs before saving
     if (editing.base_url) {
@@ -105,6 +108,7 @@ export function ProviderSettings({ providers, onSave }: Props) {
   async function handleTest() {
     if (!editing) return;
     if (editing.type !== "ollama" && !editing.api_key.trim()) return;
+    if (editing.type === "openai-compatible" && !editing.base_url?.trim()) return;
     setTesting(true);
     setTestResult(null);
 
@@ -143,6 +147,8 @@ export function ProviderSettings({ providers, onSave }: Props) {
 
   // Editing / adding a provider
   if (editing) {
+    const compatibleNeedsUrl = editing.type === "openai-compatible" && !editing.base_url?.trim();
+
     return (
       <div class="space-y-3">
         <h3 class="text-xs font-semibold text-gray-500 uppercase">
@@ -210,6 +216,10 @@ export function ProviderSettings({ providers, onSave }: Props) {
             />
             {editing.type === "ollama" ? (
               <p class="text-xs text-gray-400 mt-0.5">Leave empty for localhost:11434</p>
+            ) : compatibleNeedsUrl ? (
+              <p class="text-xs text-amber-600 mt-0.5">
+                Required — enter your server URL (e.g. http://localhost:1234/v1).
+              </p>
             ) : (
               <p class="text-xs text-gray-400 mt-0.5">
                 Include the version path (e.g. /v1) — the endpoint is appended automatically.
@@ -236,14 +246,18 @@ export function ProviderSettings({ providers, onSave }: Props) {
         <div class="flex gap-2">
           <button
             onClick={handleTest}
-            disabled={testing || (editing.type !== "ollama" && !editing.api_key.trim())}
+            disabled={
+              testing ||
+              (editing.type !== "ollama" && !editing.api_key.trim()) ||
+              compatibleNeedsUrl
+            }
             class="flex-1 border text-sm py-1.5 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
           >
             {testing ? "Testing..." : "Test"}
           </button>
           <button
             onClick={handleSaveProvider}
-            disabled={editing.type !== "ollama" && !editing.api_key.trim()}
+            disabled={(editing.type !== "ollama" && !editing.api_key.trim()) || compatibleNeedsUrl}
             class="flex-1 bg-blue-600 text-white text-sm py-1.5 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
           >
             Save

@@ -21,6 +21,8 @@ export function timeAgo(timestamp: number): string {
 /** Map technical error messages to user-friendly descriptions. */
 export function friendlyError(msg: string): string {
   const lower = msg.toLowerCase();
+  if (lower.includes("tab_reload_required"))
+    return "Please reload this tab — the extension needs a one-time activation on pages that were open before installation.";
   if (lower.includes("permission") || lower.includes("manifest"))
     return "Cannot access this page. Select text on a regular webpage, then click an action.";
   if (lower.includes("no tab") || (lower.includes("tab") && lower.includes("missing")))

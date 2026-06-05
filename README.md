@@ -22,6 +22,7 @@ Manifest V3 browser extension built with Preact and TypeScript. Calls LLM provid
 - **Flexible input** — pick one input per action: Selection (formatted), Selection (plain text), Whole page, or Manual entry. Whatever you choose feeds the `{text}` variable in your prompt; `{url}` and `{title}` are always available too
 - **Hotkeys** — keyboard shortcuts trigger actions instantly from any page
 - **Output actions** — results can replace selected text, copy to clipboard, insert before/after, or show in panel
+- **Follow-up messages** — after a manual-entry action returns a result, send another message directly from the result view to iterate without navigating back
 - **Execution history** — last 50 results are stored locally for quick access and re-use
 - **Multiple LLM providers** — OpenAI, Anthropic, Google Gemini, Ollama (local), OpenRouter, or any OpenAI-compatible endpoint
 - **Starter actions** — six ready-to-use actions (Summarize, Translate to English, Rewrite Formal, Explain, Fix Grammar, Ask AI) are created automatically

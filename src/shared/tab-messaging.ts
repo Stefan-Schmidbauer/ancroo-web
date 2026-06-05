@@ -29,7 +29,15 @@ async function injectContentScript(tabId: number): Promise<void> {
     throw new Error("No content script files in manifest");
   }
 
-  await chrome.scripting.executeScript({ target: { tabId }, files });
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, files });
+  } catch {
+    // Programmatic injection failed — most likely because this tab was open before
+    // the extension was installed and host permissions have not been granted yet.
+    // Reloading the tab lets Chrome inject the content script via the manifest
+    // content_scripts declaration, which does not require explicit host permissions.
+    throw new Error("tab_reload_required");
+  }
   injectedTabs.add(tabId);
 
   // Give the script a moment to register its message listener

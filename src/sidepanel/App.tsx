@@ -3,12 +3,7 @@ import { getSettings } from "@/shared/settings";
 import { isSetupComplete } from "@/shared/settings";
 import { executeWorkflowUnified } from "@/shared/executor";
 import { listWorkflowsUnified } from "@/shared/workflow-provider";
-import type {
-  Workflow,
-  HistoryEntry,
-  CollectionRecipe,
-  InputDataPacket,
-} from "@/shared/types";
+import type { Workflow, HistoryEntry, CollectionRecipe, InputDataPacket } from "@/shared/types";
 import type {
   ExtensionMessage,
   SelectionResultMessage,
@@ -16,11 +11,7 @@ import type {
   InsertResultMessage,
 } from "@/shared/messages";
 import { sendToTab } from "@/shared/tab-messaging";
-import {
-  needsManualInput,
-  friendlyError,
-  categoryIcon,
-} from "./utils";
+import { needsManualInput, friendlyError, categoryIcon } from "./utils";
 import { HistoryItem } from "./HistoryItem";
 import { SetupScreen } from "./SetupScreen";
 import { AboutPanel } from "./AboutPanel";
@@ -28,7 +19,11 @@ import { WorkflowEditor } from "./WorkflowEditor";
 import { Settings } from "./Settings";
 import type { LocalWorkflow } from "@/shared/types";
 import type { LLMProviderConfig } from "@/shared/settings";
-import { listLocalWorkflows, saveLocalWorkflow, deleteLocalWorkflow } from "@/shared/local-workflows";
+import {
+  listLocalWorkflows,
+  saveLocalWorkflow,
+  deleteLocalWorkflow,
+} from "@/shared/local-workflows";
 import {
   listCategories,
   saveCategory,
@@ -63,6 +58,7 @@ export function App() {
   // Result display state
   const [resultText, setResultText] = useState<string | null>(null);
   const [resultWorkflowName, setResultWorkflowName] = useState<string>("");
+  const [resultWorkflow, setResultWorkflow] = useState<Workflow | null>(null);
   const [copied, setCopied] = useState(false);
 
   // Collapsed categories
@@ -197,15 +193,14 @@ export function App() {
     return packet;
   }
 
-  async function applyAction(
-    action: string,
-    resultText: string,
-    tabId: number,
-  ) {
+  async function applyAction(action: string, resultText: string, tabId: number) {
     switch (action) {
       case "replace_selection":
       case "insert_text": {
-        const res = await sendToTab<InsertResultMessage>(tabId, { type: "INSERT_TEXT", text: resultText });
+        const res = await sendToTab<InsertResultMessage>(tabId, {
+          type: "INSERT_TEXT",
+          text: resultText,
+        });
         await sendToTab(tabId, {
           type: "SHOW_TOAST",
           text: res?.success ? "Text inserted" : "Could not insert text",
@@ -232,7 +227,10 @@ export function App() {
         break;
       }
       case "insert_before": {
-        const res = await sendToTab<InsertResultMessage>(tabId, { type: "INSERT_BEFORE", text: resultText });
+        const res = await sendToTab<InsertResultMessage>(tabId, {
+          type: "INSERT_BEFORE",
+          text: resultText,
+        });
         await sendToTab(tabId, {
           type: "SHOW_TOAST",
           text: res?.success ? "Text inserted before selection" : "Could not insert text",
@@ -242,7 +240,10 @@ export function App() {
         break;
       }
       case "insert_after": {
-        const res = await sendToTab<InsertResultMessage>(tabId, { type: "INSERT_AFTER", text: resultText });
+        const res = await sendToTab<InsertResultMessage>(tabId, {
+          type: "INSERT_AFTER",
+          text: resultText,
+        });
         await sendToTab(tabId, {
           type: "SHOW_TOAST",
           text: res?.success ? "Text inserted after selection" : "Could not insert text",
@@ -279,11 +280,13 @@ export function App() {
       });
       if (!tab?.id) return;
 
+      const isManualInput = workflow.recipe?.input === "manual_input";
       const tabUrl = tab.url ?? "";
       if (
-        tabUrl.startsWith("chrome://") ||
-        tabUrl.startsWith("chrome-extension://") ||
-        tabUrl.startsWith("about:")
+        !isManualInput &&
+        (tabUrl.startsWith("chrome://") ||
+          tabUrl.startsWith("chrome-extension://") ||
+          tabUrl.startsWith("about:"))
       ) {
         setError("Cannot run actions on this page. Please switch to a regular website tab.");
         return;
@@ -330,6 +333,9 @@ export function App() {
         ) {
           setResultText(result.result.text);
           setResultWorkflowName(workflow.name);
+          setResultWorkflow(workflow);
+          setManualInputText("");
+          setPendingWorkflow(null);
         }
 
         await applyAction(action, result.result.text, tab.id);
@@ -351,6 +357,11 @@ export function App() {
     await navigator.clipboard.writeText(resultText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function handleFollowUp() {
+    if (!resultWorkflow || !manualInputText.trim()) return;
+    await executeTextWorkflow(resultWorkflow);
   }
 
   if (loading || setupDone === null) {
@@ -469,6 +480,9 @@ export function App() {
 
   // Result display
   if (resultText !== null) {
+    const showFollowUp = resultWorkflow && needsManualInput(resultWorkflow);
+    const isExecutingResult = resultWorkflow && executing === resultWorkflow.slug;
+
     return (
       <div class="flex flex-col h-screen">
         <div class="flex items-center justify-between p-3 border-b bg-white">
@@ -476,6 +490,7 @@ export function App() {
           <button
             onClick={() => {
               setResultText(null);
+              setResultWorkflow(null);
               setCopied(false);
             }}
             class="text-xs text-gray-400 hover:text-gray-600"
@@ -500,6 +515,34 @@ export function App() {
             {copied ? "Copied!" : "Copy to clipboard"}
           </button>
         </div>
+
+        {showFollowUp && (
+          <div class="p-3 border-t bg-gray-50">
+            {isExecutingResult ? (
+              <div class="flex items-center gap-2 text-xs text-amber-600 py-2">
+                <span class="w-3 h-3 border-2 border-amber-600 border-t-transparent rounded-full animate-spin" />
+                <span>Processing with AI...</span>
+              </div>
+            ) : (
+              <>
+                <textarea
+                  value={manualInputText}
+                  onInput={(e) => setManualInputText((e.target as HTMLTextAreaElement).value)}
+                  placeholder="Send another message..."
+                  class="w-full p-2 bg-white border rounded-lg text-sm resize-none focus:outline-none focus:ring-1 focus:ring-blue-300"
+                  rows={3}
+                />
+                <button
+                  onClick={handleFollowUp}
+                  disabled={!manualInputText.trim()}
+                  class="mt-2 w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition text-sm disabled:opacity-50"
+                >
+                  Send
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -594,21 +637,32 @@ export function App() {
 
                     const inputLabel = ((): string | null => {
                       switch (workflow.recipe?.input) {
-                        case "manual_input": return "manual";
-                        case "page_text": return "page";
-                        case "selection_html": return "selection (html)";
-                        case "selection_plain": return "selection";
-                        default: return null;
+                        case "manual_input":
+                          return "manual";
+                        case "page_text":
+                          return "page";
+                        case "selection_html":
+                          return "selection (html)";
+                        case "selection_plain":
+                          return "selection";
+                        default:
+                          return null;
                       }
                     })();
                     const outputLabel: string | null = (() => {
                       switch (workflow.output_action) {
-                        case "replace_selection": return "replace";
-                        case "copy_to_clipboard": return "copy";
-                        case "insert_before": return "insert↑";
-                        case "insert_after": return "insert↓";
-                        case "side_panel_only": return "panel";
-                        default: return null;
+                        case "replace_selection":
+                          return "replace";
+                        case "copy_to_clipboard":
+                          return "copy";
+                        case "insert_before":
+                          return "insert↑";
+                        case "insert_after":
+                          return "insert↓";
+                        case "side_panel_only":
+                          return "panel";
+                        default:
+                          return null;
                       }
                     })();
 
@@ -731,6 +785,10 @@ export function App() {
                       if (entry.output_full) {
                         setResultText(entry.output_full);
                         setResultWorkflowName(entry.workflow_name);
+                        setResultWorkflow(
+                          workflows.find((w) => w.slug === entry.workflow_slug) ?? null,
+                        );
+                        setManualInputText("");
                       }
                     }}
                   />
