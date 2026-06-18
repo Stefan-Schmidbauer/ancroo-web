@@ -20,7 +20,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "preact": "^10.29.0"
+    "preact": "^10.29.2"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.4.0",
