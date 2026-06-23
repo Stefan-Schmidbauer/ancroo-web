@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "preact/hooks";
 import { getSettings, saveSettings, type LLMProviderConfig } from "@/shared/settings";
 import { importBackup } from "@/shared/backup";
 import { seedStarterWorkflows } from "@/shared/local-workflows";
-import { fetchModels } from "@/shared/llm/models";
+import { fetchModels, type ModelInfo } from "@/shared/llm/models";
 import { ProviderSettings, DEFAULT_MODELS } from "./ProviderSettings";
 
 /** Setup screen — LLM provider configuration. */
@@ -10,11 +10,45 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
   const [providers, setProviders] = useState<LLMProviderConfig[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [importStatus, setImportStatus] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
+  const [selectedModel, setSelectedModel] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     getSettings().then((s) => setProviders(s.llm_providers));
   }, []);
+
+  // Load the first provider's models so the user can pick the default model for
+  // the starter actions, instead of auto-picking an arbitrary first entry.
+  useEffect(() => {
+    const provider = providers[0];
+    if (!provider) {
+      setAvailableModels([]);
+      return;
+    }
+    let cancelled = false;
+    const fallback = DEFAULT_MODELS[provider.type] || "";
+    fetchModels(provider)
+      .then((models) => {
+        if (cancelled) return;
+        setAvailableModels(models);
+        if (models.length > 0) {
+          // Drop the selection if it's no longer offered by the current provider.
+          setSelectedModel((prev) => (models.some((m) => m.id === prev) ? prev : ""));
+        } else {
+          // No model list available — prefill the curated default for the text input.
+          setSelectedModel((prev) => prev || fallback);
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAvailableModels([]);
+        setSelectedModel((prev) => prev || fallback);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [providers]);
 
   async function handleSaveProviders(updated: LLMProviderConfig[]) {
     setProviders(updated);
@@ -45,21 +79,15 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
       setError("Add at least one LLM provider to continue.");
       return;
     }
+    if (!selectedModel.trim()) {
+      setError("Select a default model to continue.");
+      return;
+    }
     setError(null);
     await saveSettings({ llm_providers: providers });
 
-    // Seed starter workflows — try to detect the first available model
-    const firstProvider = providers[0];
-    let defaultModel = DEFAULT_MODELS[firstProvider.type] || "gpt-4o";
-    try {
-      const models = await fetchModels(firstProvider);
-      if (models.length > 0) {
-        defaultModel = models[0].id;
-      }
-    } catch {
-      // Fall back to hardcoded default
-    }
-    await seedStarterWorkflows(firstProvider.id, defaultModel);
+    // Seed starter workflows with the model the user picked.
+    await seedStarterWorkflows(providers[0].id, selectedModel.trim());
 
     onComplete();
   }
@@ -98,11 +126,41 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
         <ProviderSettings providers={providers} onSave={handleSaveProviders} />
       </div>
 
+      {providers.length > 0 && (
+        <div class="mt-4">
+          <label class="text-xs font-semibold text-gray-500 mb-1 block">
+            Default model for starter actions
+          </label>
+          {availableModels.length > 0 ? (
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel((e.target as HTMLSelectElement).value)}
+              class="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg bg-white"
+            >
+              <option value="">Select a model...</option>
+              {availableModels.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={selectedModel}
+              onInput={(e) => setSelectedModel((e.target as HTMLInputElement).value)}
+              placeholder="Enter a model name..."
+              class="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg bg-white"
+            />
+          )}
+        </div>
+      )}
+
       {error && <div class="text-xs text-red-600 mt-3">{error}</div>}
 
       <button
         onClick={handleComplete}
-        disabled={providers.length === 0}
+        disabled={providers.length === 0 || !selectedModel.trim()}
         class="mt-3 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 text-sm"
       >
         Complete Setup
