@@ -16,10 +16,21 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
   // no starter actions get seeded, so the default-model picker is irrelevant.
   const [hasWorkflows, setHasWorkflows] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Set once an import has resolved, so a late-resolving mount read can't
+  // clobber the imported value back to its (pre-import) snapshot.
+  const importedRef = useRef(false);
 
   useEffect(() => {
-    getSettings().then((s) => setProviders(s.llm_providers));
-    listLocalWorkflows().then((w) => setHasWorkflows(w.length > 0));
+    let cancelled = false;
+    getSettings().then((s) => {
+      if (!cancelled) setProviders(s.llm_providers);
+    });
+    listLocalWorkflows().then((w) => {
+      if (!cancelled && !importedRef.current) setHasWorkflows(w.length > 0);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Load the first provider's models so the user can pick the default model for
@@ -69,6 +80,7 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
       const result = await importBackup(file);
       const settings = await getSettings();
       setProviders(settings.llm_providers);
+      importedRef.current = true;
       setHasWorkflows(result.workflows > 0);
       setError(null);
       setImportStatus({
@@ -92,7 +104,8 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
       return;
     }
     setError(null);
-    await saveSettings({ llm_providers: providers });
+    const current = await getSettings();
+    await saveSettings({ ...current, llm_providers: providers });
 
     // Seed starter workflows with the model the user picked — but only when none
     // exist yet, so an imported backup keeps its own actions untouched.
@@ -107,7 +120,8 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
     <div class="flex flex-col h-screen p-4">
       <h1 class="text-lg font-bold mb-1">Ancroo Setup</h1>
       <p class="text-xs text-gray-500 mb-3">
-        Add at least one LLM provider to get started. Starter actions will be created automatically.
+        Add at least one LLM provider to get started.
+        {!hasWorkflows && " Starter actions will be created automatically."}
       </p>
 
       <div class="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
