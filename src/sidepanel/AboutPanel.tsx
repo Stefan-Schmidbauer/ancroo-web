@@ -56,6 +56,17 @@ export function AboutPanel({ onClose }: { onClose: () => void }) {
               GitHub
             </a>
           </div>
+          <div class="flex justify-between px-3 py-2.5">
+            <span class="text-sm text-gray-500">Demo</span>
+            <a
+              href="https://ancroo.github.io/ancroo-web/"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-sm text-blue-600 hover:text-blue-700"
+            >
+              Try it out
+            </a>
+          </div>
         </div>
 
         <p class="text-xs text-gray-400 text-center">
