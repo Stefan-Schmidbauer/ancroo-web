@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "preact/hooks";
 import { getSettings, saveSettings, type LLMProviderConfig } from "@/shared/settings";
 import { importBackup } from "@/shared/backup";
-import { seedStarterWorkflows } from "@/shared/local-workflows";
+import { listLocalWorkflows, seedStarterWorkflows } from "@/shared/local-workflows";
 import { fetchModels, type ModelInfo } from "@/shared/llm/models";
 import { ProviderSettings, DEFAULT_MODELS } from "./ProviderSettings";
 
@@ -12,10 +12,14 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
   const [importStatus, setImportStatus] = useState<{ msg: string; ok: boolean } | null>(null);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
+  // Whether workflows already exist (e.g. restored from a backup). When they do,
+  // no starter actions get seeded, so the default-model picker is irrelevant.
+  const [hasWorkflows, setHasWorkflows] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     getSettings().then((s) => setProviders(s.llm_providers));
+    listLocalWorkflows().then((w) => setHasWorkflows(w.length > 0));
   }, []);
 
   // Load the first provider's models so the user can pick the default model for
@@ -65,6 +69,8 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
       const result = await importBackup(file);
       const settings = await getSettings();
       setProviders(settings.llm_providers);
+      setHasWorkflows(result.workflows > 0);
+      setError(null);
       setImportStatus({
         msg: `Imported ${result.workflows} action${result.workflows !== 1 ? "s" : ""}, ${result.providers} provider${result.providers !== 1 ? "s" : ""}.`,
         ok: true,
@@ -79,15 +85,20 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
       setError("Add at least one LLM provider to continue.");
       return;
     }
-    if (!selectedModel.trim()) {
+    // The default model only matters for seeded starter actions. If workflows
+    // already exist (e.g. restored from a backup), skip the picker entirely.
+    if (!hasWorkflows && !selectedModel.trim()) {
       setError("Select a default model to continue.");
       return;
     }
     setError(null);
     await saveSettings({ llm_providers: providers });
 
-    // Seed starter workflows with the model the user picked.
-    await seedStarterWorkflows(providers[0].id, selectedModel.trim());
+    // Seed starter workflows with the model the user picked — but only when none
+    // exist yet, so an imported backup keeps its own actions untouched.
+    if (!hasWorkflows) {
+      await seedStarterWorkflows(providers[0].id, selectedModel.trim());
+    }
 
     onComplete();
   }
@@ -126,7 +137,7 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
         <ProviderSettings providers={providers} onSave={handleSaveProviders} />
       </div>
 
-      {providers.length > 0 && (
+      {providers.length > 0 && !hasWorkflows && (
         <div class="mt-4">
           <label class="text-xs font-semibold text-gray-500 mb-1 block">
             Default model for starter actions
@@ -160,7 +171,7 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
 
       <button
         onClick={handleComplete}
-        disabled={providers.length === 0 || !selectedModel.trim()}
+        disabled={providers.length === 0 || (!hasWorkflows && !selectedModel.trim())}
         class="mt-3 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 text-sm"
       >
         Complete Setup
