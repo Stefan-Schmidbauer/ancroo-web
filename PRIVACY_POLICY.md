@@ -71,4 +71,4 @@ Changes to this policy will be reflected in this document with an updated effect
 
 ## Contact
 
-For privacy questions, open an [issue](https://github.com/ancroo/ancroo-web/issues) or contact the developer via [GitHub](https://github.com/Stefan-Schmidbauer).
+For privacy questions or data requests, email support@ancroo.com. To report a security vulnerability, please use [GitHub's private vulnerability reporting](https://github.com/ancroo/ancroo-web/security/advisories/new) rather than a public issue. For other, non-sensitive questions you can open an [issue](https://github.com/ancroo/ancroo-web/issues).
