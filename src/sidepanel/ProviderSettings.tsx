@@ -1,7 +1,8 @@
-import { useState } from "preact/hooks";
+import { useState, useEffect } from "preact/hooks";
 import type { LLMProviderConfig, LLMProviderType } from "@/shared/settings";
 import { ensureHostPermission } from "@/shared/host-permission";
 import { listLocalWorkflows } from "@/shared/local-workflows";
+import { fetchModels, type ModelInfo } from "@/shared/llm/models";
 
 const PROVIDER_TYPES: { value: LLMProviderType; label: string }[] = [
   { value: "openai", label: "OpenAI" },
@@ -42,11 +43,37 @@ export function ProviderSettings({ providers, onSave }: Props) {
   const [editing, setEditing] = useState<LLMProviderConfig | null>(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [pendingDelete, setPendingDelete] = useState<{
     id: string;
     name: string;
     count: number;
   } | null>(null);
+
+  // Load the provider's models so the default-model picker offers the live list.
+  // Re-fetches whenever the credentials that select a model list change.
+  useEffect(() => {
+    if (!editing) {
+      setAvailableModels([]);
+      return;
+    }
+    const hasCreds = editing.type === "ollama" || editing.api_key.trim().length > 0;
+    if (!hasCreds) {
+      setAvailableModels([]);
+      return;
+    }
+    let cancelled = false;
+    fetchModels(editing)
+      .then((models) => {
+        if (!cancelled) setAvailableModels(models);
+      })
+      .catch(() => {
+        if (!cancelled) setAvailableModels([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editing?.id, editing?.type, editing?.api_key, editing?.base_url]);
 
   function startAdd() {
     setEditing({
@@ -54,6 +81,7 @@ export function ProviderSettings({ providers, onSave }: Props) {
       type: "openai",
       name: "OpenAI",
       api_key: "",
+      model: DEFAULT_MODELS.openai,
     });
     setTestResult(null);
   }
@@ -96,8 +124,15 @@ export function ProviderSettings({ providers, onSave }: Props) {
       }
     }
 
+    // Guarantee a default model so new actions always have something to prefill.
+    const withModel: LLMProviderConfig = {
+      ...editing,
+      model: editing.model?.trim() || DEFAULT_MODELS[editing.type] || "",
+    };
     const saved =
-      editing.type === "ollama" && !editing.api_key ? { ...editing, api_key: "ollama" } : editing;
+      withModel.type === "ollama" && !withModel.api_key
+        ? { ...withModel, api_key: "ollama" }
+        : withModel;
     const updated = providers.filter((p) => p.id !== saved.id);
     updated.push(saved);
     onSave(updated);
@@ -132,7 +167,7 @@ export function ProviderSettings({ providers, onSave }: Props) {
       } else {
         const { callLLM } = await import("@/shared/llm");
         await callLLM(testProvider, {
-          model: DEFAULT_MODELS[editing.type] || "gpt-4o",
+          model: editing.model?.trim() || DEFAULT_MODELS[editing.type] || "gpt-4o",
           user_prompt: "Reply with exactly: OK",
           max_tokens: 5,
         });
@@ -162,7 +197,9 @@ export function ProviderSettings({ providers, onSave }: Props) {
             onChange={(e) => {
               const type = (e.target as HTMLSelectElement).value as LLMProviderType;
               const label = PROVIDER_TYPES.find((t) => t.value === type)?.label ?? type;
-              setEditing({ ...editing, type, name: label });
+              // Reset the model to the new type's default — a model from another
+              // provider type is meaningless here.
+              setEditing({ ...editing, type, name: label, model: DEFAULT_MODELS[type] });
             }}
             class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
           >
@@ -234,6 +271,40 @@ export function ProviderSettings({ providers, onSave }: Props) {
             </div>
           </div>
         ) : null}
+
+        <div>
+          <label class="text-xs font-medium text-gray-700">Default model</label>
+          {availableModels.length > 0 ? (
+            <select
+              value={editing.model ?? ""}
+              onChange={(e) =>
+                setEditing({ ...editing, model: (e.target as HTMLSelectElement).value })
+              }
+              class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
+            >
+              {/* Keep the current value selectable even if the live list omits it. */}
+              {editing.model && !availableModels.some((m) => m.id === editing.model) && (
+                <option value={editing.model}>{editing.model}</option>
+              )}
+              {availableModels.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={editing.model ?? ""}
+              onInput={(e) => setEditing({ ...editing, model: (e.target as HTMLInputElement).value })}
+              class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
+              placeholder="gpt-4o"
+            />
+          )}
+          <p class="text-xs text-gray-400 mt-0.5">
+            Prefilled when you create a new action with this provider.
+          </p>
+        </div>
 
         {testResult && (
           <div

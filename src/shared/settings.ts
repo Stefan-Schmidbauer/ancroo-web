@@ -15,6 +15,8 @@ export interface LLMProviderConfig {
   api_key: string;
   /** Base URL for openai-compatible providers. */
   base_url?: string;
+  /** Default model for this provider — prefilled when creating new actions. */
+  model?: string;
 }
 
 export interface Settings {

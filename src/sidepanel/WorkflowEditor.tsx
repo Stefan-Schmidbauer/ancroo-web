@@ -66,7 +66,7 @@ export function WorkflowEditor({ workflow, providers, categories = DEFAULT_CATEG
     if (providerId) {
       const provider = providers.find((p) => p.id === providerId);
       if (provider) {
-        if (!model) setModel(DEFAULT_MODELS[provider.type] || "");
+        if (!model) setModel(provider.model || DEFAULT_MODELS[provider.type] || "");
         loadModels(provider);
       }
     }
