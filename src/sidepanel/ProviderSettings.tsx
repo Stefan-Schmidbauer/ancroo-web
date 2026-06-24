@@ -24,14 +24,25 @@ const DEFAULT_BASE_URLS: Partial<Record<LLMProviderType, string>> = {
   ollama: "http://localhost:11434",
 };
 
-const DEFAULT_MODELS: Record<LLMProviderType, string> = {
-  openai: "gpt-4o",
-  anthropic: "claude-sonnet-4-20250514",
-  gemini: "gemini-2.0-flash",
-  ollama: "gemma3:12b",
-  openrouter: "openai/gpt-4o",
-  "openai-compatible": "",
-};
+/**
+ * Whether a provider has enough credentials to query its model list:
+ * an API key (except Ollama) and, for OpenAI-compatible endpoints, a base URL.
+ */
+function providerHasCreds(p: LLMProviderConfig): boolean {
+  const hasKey = p.type === "ollama" || p.api_key.trim().length > 0;
+  const hasUrl = p.type !== "openai-compatible" || !!p.base_url?.trim();
+  return hasKey && hasUrl;
+}
+
+/**
+ * Fingerprint of the credentials that select a model list. Used to tell whether
+ * the connection currently shown still matches the one that was verified — so
+ * editing an unrelated field (e.g. the display name) doesn't force a re-test,
+ * but changing the key, URL or type does.
+ */
+function credsFingerprint(p: LLMProviderConfig): string {
+  return `${p.type}|${p.api_key.trim()}|${p.base_url?.trim() ?? ""}`;
+}
 
 interface Props {
   providers: LLMProviderConfig[];
@@ -44,36 +55,41 @@ export function ProviderSettings({ providers, onSave }: Props) {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+  // Fingerprint of the credentials whose model list is currently loaded, i.e.
+  // the connection that has been verified. The model picker and Save stay locked
+  // until this matches the credentials on screen.
+  const [verifiedCreds, setVerifiedCreds] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{
     id: string;
     name: string;
     count: number;
   } | null>(null);
 
-  // Load the provider's models so the default-model picker offers the live list.
-  // Re-fetches whenever the credentials that select a model list change.
+  // Existing (already-saved) providers have working credentials, so load their
+  // models automatically on open — no re-test needed. New providers load their
+  // list only when the user runs the connection test.
   useEffect(() => {
-    if (!editing) {
-      setAvailableModels([]);
-      return;
-    }
-    const hasCreds = editing.type === "ollama" || editing.api_key.trim().length > 0;
-    if (!hasCreds) {
-      setAvailableModels([]);
-      return;
-    }
+    if (!editing) return;
+    const isExisting = providers.some((p) => p.id === editing.id);
+    if (!isExisting || !providerHasCreds(editing)) return;
     let cancelled = false;
+    setLoadingModels(true);
     fetchModels(editing)
       .then((models) => {
         if (!cancelled) setAvailableModels(models);
       })
       .catch(() => {
         if (!cancelled) setAvailableModels([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingModels(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [editing?.id, editing?.type, editing?.api_key, editing?.base_url]);
+    // Only re-run when switching to a different provider, not on every keystroke.
+  }, [editing?.id]);
 
   function startAdd() {
     setEditing({
@@ -81,13 +97,21 @@ export function ProviderSettings({ providers, onSave }: Props) {
       type: "openai",
       name: "OpenAI",
       api_key: "",
-      model: DEFAULT_MODELS.openai,
+      // No model preselected — the user picks one from the live list after the
+      // connection test loads the provider's models.
+      model: "",
     });
+    setAvailableModels([]);
+    setVerifiedCreds(null);
     setTestResult(null);
   }
 
   function startEdit(provider: LLMProviderConfig) {
     setEditing({ ...provider });
+    setAvailableModels([]);
+    // Saved credentials are already known-good — treat them as verified so the
+    // user can re-save without testing again unless they change the connection.
+    setVerifiedCreds(credsFingerprint(provider));
     setTestResult(null);
   }
 
@@ -124,10 +148,11 @@ export function ProviderSettings({ providers, onSave }: Props) {
       }
     }
 
-    // Guarantee a default model so new actions always have something to prefill.
+    // The Save button is disabled until the connection is verified and a model
+    // is chosen, so trust the user's explicit selection.
     const withModel: LLMProviderConfig = {
       ...editing,
-      model: editing.model?.trim() || DEFAULT_MODELS[editing.type] || "",
+      model: editing.model?.trim() ?? "",
     };
     const saved =
       withModel.type === "ollama" && !withModel.api_key
@@ -140,6 +165,8 @@ export function ProviderSettings({ providers, onSave }: Props) {
     setTestResult(null);
   }
 
+  // Verify the connection by loading the provider's model list. A successful
+  // fetch both confirms auth/connectivity and populates the model picker.
   async function handleTest() {
     if (!editing) return;
     if (editing.type !== "ollama" && !editing.api_key.trim()) return;
@@ -159,22 +186,26 @@ export function ProviderSettings({ providers, onSave }: Props) {
       }
       const testProvider =
         editing.type === "ollama" && !editing.api_key ? { ...editing, api_key: "ollama" } : editing;
-      if (editing.type === "openai-compatible") {
-        // No model is configured on the provider, so verify connectivity and
-        // auth via GET /models instead of guessing a model name.
-        const { pingOpenAI } = await import("@/shared/llm/openai");
-        await pingOpenAI(testProvider);
-      } else {
-        const { callLLM } = await import("@/shared/llm");
-        await callLLM(testProvider, {
-          model: editing.model?.trim() || DEFAULT_MODELS[editing.type] || "gpt-4o",
-          user_prompt: "Reply with exactly: OK",
-          max_tokens: 5,
-        });
+      const models = await fetchModels(testProvider);
+      setAvailableModels(models);
+      setVerifiedCreds(credsFingerprint(editing));
+      // Drop a stale selection that the live list no longer offers, so the
+      // picker doesn't keep a model the provider can't serve.
+      if (editing.model && models.length > 0 && !models.some((m) => m.id === editing.model)) {
+        setEditing({ ...editing, model: "" });
       }
       setTestResult("success");
     } catch (err) {
-      setTestResult(err instanceof Error ? err.message : "Connection failed");
+      setAvailableModels([]);
+      if (editing.type === "openai-compatible") {
+        // A /models route is optional for OpenAI-compatible servers, so a failed
+        // listing doesn't mean the connection is unusable. Accept it and let the
+        // user type the model name manually instead of blocking Save.
+        setVerifiedCreds(credsFingerprint(editing));
+        setTestResult("manual");
+      } else {
+        setTestResult(err instanceof Error ? err.message : "Connection failed");
+      }
     } finally {
       setTesting(false);
     }
@@ -183,6 +214,10 @@ export function ProviderSettings({ providers, onSave }: Props) {
   // Editing / adding a provider
   if (editing) {
     const compatibleNeedsUrl = editing.type === "openai-compatible" && !editing.base_url?.trim();
+    const hasCreds = providerHasCreds(editing);
+    const credsVerified = verifiedCreds === credsFingerprint(editing);
+    const baseInvalid =
+      (editing.type !== "ollama" && !editing.api_key.trim()) || compatibleNeedsUrl;
 
     return (
       <div class="space-y-3">
@@ -197,9 +232,10 @@ export function ProviderSettings({ providers, onSave }: Props) {
             onChange={(e) => {
               const type = (e.target as HTMLSelectElement).value as LLMProviderType;
               const label = PROVIDER_TYPES.find((t) => t.value === type)?.label ?? type;
-              // Reset the model to the new type's default — a model from another
-              // provider type is meaningless here.
-              setEditing({ ...editing, type, name: label, model: DEFAULT_MODELS[type] });
+              // Clear the model — a model from another provider type is meaningless
+              // here, and the user re-picks from the new type's live list.
+              setEditing({ ...editing, type, name: label, model: "" });
+              setAvailableModels([]);
             }}
             class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
           >
@@ -272,9 +308,51 @@ export function ProviderSettings({ providers, onSave }: Props) {
           </div>
         ) : null}
 
+        {/* Step 1 — verify the connection, which loads the model list. */}
+        <button
+          onClick={handleTest}
+          disabled={testing || baseInvalid}
+          class="w-full border text-sm py-1.5 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
+        >
+          {testing ? "Testing connection…" : credsVerified ? "Re-test connection" : "Test connection"}
+        </button>
+
+        {testResult && (
+          <div
+            class={`text-xs px-2 py-1.5 rounded ${
+              testResult === "success"
+                ? "bg-green-50 text-green-700"
+                : testResult === "manual"
+                  ? "bg-amber-50 text-amber-700"
+                  : "bg-red-50 text-red-600"
+            }`}
+          >
+            {testResult === "success"
+              ? `Connection successful${availableModels.length > 0 ? ` — ${availableModels.length} model${availableModels.length !== 1 ? "s" : ""} found` : ""}!`
+              : testResult === "manual"
+                ? "Connected, but no model list is available — enter a model name below."
+                : testResult}
+          </div>
+        )}
+
+        {/* Step 2 — pick the model from the verified provider's live list. */}
         <div>
           <label class="text-xs font-medium text-gray-700">Default model</label>
-          {availableModels.length > 0 ? (
+          {!hasCreds ? (
+            <div class="w-full border rounded px-2 py-1.5 text-sm text-gray-400 bg-gray-50 mt-0.5">
+              {editing.type === "openai-compatible"
+                ? "Enter the API key and base URL, then test the connection."
+                : "Enter the API key, then test the connection."}
+            </div>
+          ) : testing || loadingModels ? (
+            <div class="w-full border rounded px-2 py-1.5 text-sm text-gray-400 bg-gray-50 mt-0.5">
+              Loading available models…
+            </div>
+          ) : !credsVerified ? (
+            <div class="w-full border rounded px-2 py-1.5 text-sm text-gray-400 bg-gray-50 mt-0.5">
+              Test the connection to load available models.
+            </div>
+          ) : availableModels.length > 0 ? (
             <select
               value={editing.model ?? ""}
               onChange={(e) =>
@@ -282,6 +360,9 @@ export function ProviderSettings({ providers, onSave }: Props) {
               }
               class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
             >
+              <option value="" disabled>
+                Select a model…
+              </option>
               {/* Keep the current value selectable even if the live list omits it. */}
               {editing.model && !availableModels.some((m) => m.id === editing.model) && (
                 <option value={editing.model}>{editing.model}</option>
@@ -293,47 +374,31 @@ export function ProviderSettings({ providers, onSave }: Props) {
               ))}
             </select>
           ) : (
+            // Connection verified but no list returned (e.g. an endpoint without
+            // a /models route) — fall back to manual entry so saving still works.
             <input
               type="text"
               value={editing.model ?? ""}
               onInput={(e) => setEditing({ ...editing, model: (e.target as HTMLInputElement).value })}
               class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
-              placeholder="gpt-4o"
+              placeholder="Enter a model name"
             />
           )}
           <p class="text-xs text-gray-400 mt-0.5">
-            Prefilled when you create a new action with this provider.
+            {credsVerified && !loadingModels && !testing && !editing.model?.trim()
+              ? "Select the model to use — it's prefilled when you create a new action."
+              : "Prefilled when you create a new action with this provider."}
           </p>
         </div>
 
-        {testResult && (
-          <div
-            class={`text-xs px-2 py-1.5 rounded ${testResult === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}
-          >
-            {testResult === "success" ? "Connection successful!" : testResult}
-          </div>
-        )}
-
-        <div class="flex gap-2">
-          <button
-            onClick={handleTest}
-            disabled={
-              testing ||
-              (editing.type !== "ollama" && !editing.api_key.trim()) ||
-              compatibleNeedsUrl
-            }
-            class="flex-1 border text-sm py-1.5 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
-          >
-            {testing ? "Testing..." : "Test"}
-          </button>
-          <button
-            onClick={handleSaveProvider}
-            disabled={(editing.type !== "ollama" && !editing.api_key.trim()) || compatibleNeedsUrl}
-            class="flex-1 bg-blue-600 text-white text-sm py-1.5 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
-          >
-            Save
-          </button>
-        </div>
+        {/* Step 3 — save, enabled once the connection is verified and a model chosen. */}
+        <button
+          onClick={handleSaveProvider}
+          disabled={baseInvalid || !credsVerified || !editing.model?.trim()}
+          class="w-full bg-blue-600 text-white text-sm py-1.5 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+        >
+          Save
+        </button>
         <button
           onClick={() => {
             setEditing(null);
@@ -412,5 +477,3 @@ export function ProviderSettings({ providers, onSave }: Props) {
     </div>
   );
 }
-
-export { DEFAULT_MODELS };

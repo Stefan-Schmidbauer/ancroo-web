@@ -3,7 +3,6 @@ import { DEFAULT_CATEGORIES } from "@/shared/local-categories";
 import type { Category } from "@/shared/local-categories";
 import type { LocalWorkflow, CollectionRecipe, WorkflowCategory } from "@/shared/types";
 import type { LLMProviderConfig } from "@/shared/settings";
-import { DEFAULT_MODELS } from "./ProviderSettings";
 import { fetchModels, type ModelInfo } from "@/shared/llm/models";
 
 const INPUT_SOURCES: { value: CollectionRecipe["input"]; label: string }[] = [
@@ -66,7 +65,7 @@ export function WorkflowEditor({ workflow, providers, categories = DEFAULT_CATEG
     if (providerId) {
       const provider = providers.find((p) => p.id === providerId);
       if (provider) {
-        if (!model) setModel(provider.model || DEFAULT_MODELS[provider.type] || "");
+        if (!model) setModel(provider.model || "");
         loadModels(provider);
       }
     }
@@ -79,7 +78,10 @@ export function WorkflowEditor({ workflow, providers, categories = DEFAULT_CATEG
     try {
       const models = await fetchModels(p);
       setAvailableModels(models);
-      setModel((prev) => (models.some((m) => m.id === prev) ? prev : ""));
+      // Drop a selection the live list no longer offers — but keep it when the
+      // list is empty (e.g. a server without /models), so the prefilled provider
+      // default isn't wiped and the user can still enter a model manually.
+      setModel((prev) => (models.length === 0 || models.some((m) => m.id === prev) ? prev : ""));
     } catch {
       setAvailableModels([]);
     } finally {
@@ -240,7 +242,7 @@ export function WorkflowEditor({ workflow, providers, categories = DEFAULT_CATEG
                   value={model}
                   onInput={(e) => setModel((e.target as HTMLInputElement).value)}
                   class="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm font-mono"
-                  placeholder="gpt-4o"
+                  placeholder="Enter a model name"
                 />
               )}
             </div>

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "preact/hooks";
 import { getSettings, saveSettings, type LLMProviderConfig } from "@/shared/settings";
 import { importBackup } from "@/shared/backup";
 import { listLocalWorkflows, seedStarterWorkflows } from "@/shared/local-workflows";
-import { ProviderSettings, DEFAULT_MODELS } from "./ProviderSettings";
+import { ProviderSettings } from "./ProviderSettings";
 
 /** Setup screen — LLM provider configuration. */
 export function SetupScreen({ onComplete }: { onComplete: () => void }) {
@@ -70,7 +70,9 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
     // when none exist yet, so an imported backup keeps its own actions untouched.
     if (!hasWorkflows) {
       const first = providers[0];
-      const model = first.model?.trim() || DEFAULT_MODELS[first.type] || "";
+      // Providers can only be saved with an explicitly chosen model, so use it
+      // directly — no hard-coded fallback model.
+      const model = first.model?.trim() || "";
       await seedStarterWorkflows(first.id, model);
     }
 
