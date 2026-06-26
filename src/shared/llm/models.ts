@@ -63,7 +63,13 @@ async function fetchGeminiModels(provider: LLMProviderConfig): Promise<ModelInfo
   if (!res.ok) throw new Error(`Gemini error ${res.status}`);
   const data = await res.json();
   return (data.models ?? [])
-    .filter((m: { name: string }) => m.name.startsWith("models/gemini"))
+    .filter(
+      (m: { name: string; supportedGenerationMethods?: string[] }) =>
+        m.name.startsWith("models/gemini") &&
+        // ListModels also returns embedding/legacy models; keep only those that
+        // can actually serve the :generateContent call we make at chat time.
+        m.supportedGenerationMethods?.includes("generateContent"),
+    )
     .map((m: { name: string; displayName?: string }) => ({
       id: m.name.replace("models/", ""),
       name: m.displayName || m.name.replace("models/", ""),
