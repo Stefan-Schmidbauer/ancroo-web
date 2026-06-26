@@ -2,7 +2,12 @@ import { sendToTab } from "@/shared/tab-messaging";
 import { buildHotkeyBindings, HOTKEY_STORAGE_KEY } from "@/shared/hotkeys";
 import { executeWorkflowUnified } from "@/shared/executor";
 import { listWorkflowsUnified, fetchHotkeySettingsUnified } from "@/shared/workflow-provider";
-import type { ExtensionMessage, SelectionResultMessage, PageTextResultMessage, WriteClipboardResultMessage } from "@/shared/messages";
+import type {
+  ExtensionMessage,
+  SelectionResultMessage,
+  PageTextResultMessage,
+  WriteClipboardResultMessage,
+} from "@/shared/messages";
 import type { Workflow, HistoryEntry, HotkeyBinding } from "@/shared/types";
 
 // Allow content scripts to read chrome.storage.session (required for hotkey bindings)
@@ -155,7 +160,8 @@ async function handleHotkeyExecution(workflowSlug: string, tab?: chrome.tabs.Tab
       const sel = await sendToTab<SelectionResultMessage>(tab.id, {
         type: "GET_SELECTION",
       } as ExtensionMessage);
-      inputText = workflow.recipe?.input === "selection_html" ? (sel?.html ?? "") : (sel?.text ?? "");
+      inputText =
+        workflow.recipe?.input === "selection_html" ? (sel?.html ?? "") : (sel?.text ?? "");
       context = { url: sel?.url ?? "", title: sel?.title ?? "" };
     }
   } catch {

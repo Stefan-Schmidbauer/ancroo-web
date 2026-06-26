@@ -31,12 +31,18 @@ export function validateBackup(data: unknown): data is BackupData {
   for (const w of d.workflows) {
     if (!w || typeof w !== "object") return false;
     const wf = w as Record<string, unknown>;
-    if (typeof wf.slug !== "string" || typeof wf.name !== "string" || typeof wf.prompt_template !== "string") return false;
+    if (
+      typeof wf.slug !== "string" ||
+      typeof wf.name !== "string" ||
+      typeof wf.prompt_template !== "string"
+    )
+      return false;
   }
   for (const p of d.providers) {
     if (!p || typeof p !== "object") return false;
     const pr = p as Record<string, unknown>;
-    if (typeof pr.id !== "string" || typeof pr.name !== "string" || typeof pr.api_key !== "string") return false;
+    if (typeof pr.id !== "string" || typeof pr.name !== "string" || typeof pr.api_key !== "string")
+      return false;
     if (!PROVIDER_TYPES.has(pr.type as LLMProviderConfig["type"])) return false;
     if (pr.base_url !== undefined && typeof pr.base_url !== "string") return false;
   }
@@ -50,9 +56,7 @@ export async function exportBackup(includeApiKeys: boolean): Promise<void> {
     listCategories(),
   ]);
 
-  const providers = settings.llm_providers.map((p) =>
-    includeApiKeys ? p : { ...p, api_key: "" },
-  );
+  const providers = settings.llm_providers.map((p) => (includeApiKeys ? p : { ...p, api_key: "" }));
 
   const data: BackupData = {
     version: "1",

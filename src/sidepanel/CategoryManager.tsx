@@ -2,11 +2,50 @@ import { useState } from "preact/hooks";
 import type { Category } from "@/shared/local-categories";
 
 const ICON_SUGGESTIONS = [
-  "📝","✏️","🔧","🎙️","🔊","🤖","📊","📁","🔒","📧",
-  "📷","🎨","⚡","💬","📅","🔍","📦","🧮","🧹","💡",
-  "🔤","💻","🖼️","🎬","📋","🏷️","📎","🔗","🧠","📡",
-  "🛡️","⏱️","📈","🗂️","✅","🔔","🪄","📄","🌍","🗑️",
-  "🌐","🏠","⚙️","🎯",
+  "📝",
+  "✏️",
+  "🔧",
+  "🎙️",
+  "🔊",
+  "🤖",
+  "📊",
+  "📁",
+  "🔒",
+  "📧",
+  "📷",
+  "🎨",
+  "⚡",
+  "💬",
+  "📅",
+  "🔍",
+  "📦",
+  "🧮",
+  "🧹",
+  "💡",
+  "🔤",
+  "💻",
+  "🖼️",
+  "🎬",
+  "📋",
+  "🏷️",
+  "📎",
+  "🔗",
+  "🧠",
+  "📡",
+  "🛡️",
+  "⏱️",
+  "📈",
+  "🗂️",
+  "✅",
+  "🔔",
+  "🪄",
+  "📄",
+  "🌍",
+  "🗑️",
+  "🌐",
+  "🏠",
+  "⚙️",
+  "🎯",
 ];
 
 function IconPicker({ onSelect }: { onSelect: (emoji: string) => void }) {
@@ -41,7 +80,13 @@ function slugify(name: string): string {
     .replace(/^-|-$/g, "");
 }
 
-export function CategoryManager({ categories, workflowCounts = {}, onSave, onDelete, onClose }: Props) {
+export function CategoryManager({
+  categories,
+  workflowCounts = {},
+  onSave,
+  onDelete,
+  onClose,
+}: Props) {
   const [editingValue, setEditingValue] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState("");
   const [editIcon, setEditIcon] = useState("");

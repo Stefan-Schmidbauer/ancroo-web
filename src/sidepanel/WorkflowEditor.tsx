@@ -37,7 +37,14 @@ function slugify(name: string): string {
 }
 
 /** Editor for creating / editing local workflows (card-based layout). */
-export function WorkflowEditor({ workflow, providers, categories = DEFAULT_CATEGORIES, onSave, onDelete, onCancel }: Props) {
+export function WorkflowEditor({
+  workflow,
+  providers,
+  categories = DEFAULT_CATEGORIES,
+  onSave,
+  onDelete,
+  onCancel,
+}: Props) {
   const isNew = !workflow;
   const defaultProvider = providers[0];
 
@@ -90,11 +97,11 @@ export function WorkflowEditor({ workflow, providers, categories = DEFAULT_CATEG
   }
 
   const hotkeyValid =
-    !hotkey.trim() ||
-    /^(Ctrl\+|Alt\+|Shift\+){1,3}[A-Za-z0-9]$/i.test(hotkey.trim());
+    !hotkey.trim() || /^(Ctrl\+|Alt\+|Shift\+){1,3}[A-Za-z0-9]$/i.test(hotkey.trim());
 
   function handleSave() {
-    if (!name.trim() || !promptTemplate.trim() || !providerId || !model.trim() || !hotkeyValid) return;
+    if (!name.trim() || !promptTemplate.trim() || !providerId || !model.trim() || !hotkeyValid)
+      return;
 
     const slug = workflow?.slug ?? slugify(name);
     const saved: LocalWorkflow = {
@@ -280,9 +287,7 @@ export function WorkflowEditor({ workflow, providers, categories = DEFAULT_CATEG
             <select
               value={inputSource}
               onChange={(e) =>
-                setInputSource(
-                  (e.target as HTMLSelectElement).value as CollectionRecipe["input"],
-                )
+                setInputSource((e.target as HTMLSelectElement).value as CollectionRecipe["input"])
               }
               class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
             >
@@ -329,7 +334,9 @@ export function WorkflowEditor({ workflow, providers, categories = DEFAULT_CATEG
       <div class="p-3 border-t bg-white space-y-2">
         <button
           onClick={handleSave}
-          disabled={!name.trim() || !promptTemplate.trim() || !providerId || !model.trim() || !hotkeyValid}
+          disabled={
+            !name.trim() || !promptTemplate.trim() || !providerId || !model.trim() || !hotkeyValid
+          }
           class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition text-sm disabled:opacity-50"
         >
           {isNew ? "Create Action" : "Save Changes"}

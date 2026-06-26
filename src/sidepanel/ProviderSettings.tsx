@@ -314,7 +314,11 @@ export function ProviderSettings({ providers, onSave }: Props) {
           disabled={testing || baseInvalid}
           class="w-full border text-sm py-1.5 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
         >
-          {testing ? "Testing connection…" : credsVerified ? "Re-test connection" : "Test connection"}
+          {testing
+            ? "Testing connection…"
+            : credsVerified
+              ? "Re-test connection"
+              : "Test connection"}
         </button>
 
         {testResult && (
@@ -379,7 +383,9 @@ export function ProviderSettings({ providers, onSave }: Props) {
             <input
               type="text"
               value={editing.model ?? ""}
-              onInput={(e) => setEditing({ ...editing, model: (e.target as HTMLInputElement).value })}
+              onInput={(e) =>
+                setEditing({ ...editing, model: (e.target as HTMLInputElement).value })
+              }
               class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
               placeholder="Enter a model name"
             />

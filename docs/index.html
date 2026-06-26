@@ -1,251 +1,313 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ancroo Web &mdash; Live Demo</title>
-  <style>
-    :root {
-      --bg: #f6f7f9;
-      --card: #ffffff;
-      --border: #e3e6ea;
-      --text: #1f2933;
-      --muted: #6b7280;
-      --accent: #2563eb;
-      --accent-soft: #eff4ff;
-      --accent-border: #bfd3ff;
-      --radius: 10px;
-    }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ancroo Web &mdash; Live Demo</title>
+    <style>
+      :root {
+        --bg: #f6f7f9;
+        --card: #ffffff;
+        --border: #e3e6ea;
+        --text: #1f2933;
+        --muted: #6b7280;
+        --accent: #2563eb;
+        --accent-soft: #eff4ff;
+        --accent-border: #bfd3ff;
+        --radius: 10px;
+      }
 
-    * { box-sizing: border-box; }
+      * {
+        box-sizing: border-box;
+      }
 
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          15px/1.5 -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+      }
 
-    .wrap {
-      max-width: 760px;
-      margin: 0 auto;
-      padding: 32px 20px 64px;
-    }
+      .wrap {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 32px 20px 64px;
+      }
 
-    header h1 {
-      font-size: 22px;
-      margin: 0 0 4px;
-    }
+      header h1 {
+        font-size: 22px;
+        margin: 0 0 4px;
+      }
 
-    header p.lead {
-      color: var(--muted);
-      margin: 0 0 8px;
-      font-size: 14px;
-    }
+      header p.lead {
+        color: var(--muted);
+        margin: 0 0 8px;
+        font-size: 14px;
+      }
 
-    header .links {
-      font-size: 13px;
-      margin-bottom: 24px;
-    }
+      header .links {
+        font-size: 13px;
+        margin-bottom: 24px;
+      }
 
-    header .links a {
-      color: var(--accent);
-      text-decoration: none;
-    }
+      header .links a {
+        color: var(--accent);
+        text-decoration: none;
+      }
 
-    header .links a:hover { text-decoration: underline; }
+      header .links a:hover {
+        text-decoration: underline;
+      }
 
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 16px;
-      margin-bottom: 16px;
-    }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 16px;
+        margin-bottom: 16px;
+      }
 
-    .card h2 {
-      font-size: 14px;
-      font-weight: 600;
-      color: #374151;
-      margin: 0 0 12px;
-    }
+      .card h2 {
+        font-size: 14px;
+        font-weight: 600;
+        color: #374151;
+        margin: 0 0 12px;
+      }
 
-    label {
-      display: block;
-      font-size: 12px;
-      color: var(--muted);
-      margin-bottom: 4px;
-    }
+      label {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
 
-    .field { margin-bottom: 14px; }
-    .field:last-child { margin-bottom: 0; }
+      .field {
+        margin-bottom: 14px;
+      }
+      .field:last-child {
+        margin-bottom: 0;
+      }
 
-    textarea,
-    input[type="text"] {
-      width: 100%;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 8px 10px;
-      font: inherit;
-      font-size: 14px;
-      color: var(--text);
-      background: #fff;
-      resize: vertical;
-    }
+      textarea,
+      input[type="text"] {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 10px;
+        font: inherit;
+        font-size: 14px;
+        color: var(--text);
+        background: #fff;
+        resize: vertical;
+      }
 
-    textarea:focus,
-    input[type="text"]:focus {
-      outline: none;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-soft);
-    }
+      textarea:focus,
+      input[type="text"]:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-soft);
+      }
 
-    textarea.mono {
-      font-family: "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
-      font-size: 13px;
-    }
+      textarea.mono {
+        font-family: "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 13px;
+      }
 
-    .grid-2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
+      .grid-2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
 
-    @media (max-width: 520px) {
-      .grid-2 { grid-template-columns: 1fr; }
-    }
+      @media (max-width: 520px) {
+        .grid-2 {
+          grid-template-columns: 1fr;
+        }
+      }
 
-    .rich {
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 10px 12px;
-      min-height: 110px;
-      font-size: 14px;
-    }
+      .rich {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 12px;
+        min-height: 110px;
+        font-size: 14px;
+      }
 
-    .rich:focus {
-      outline: none;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-soft);
-    }
+      .rich:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-soft);
+      }
 
-    .rich ul { margin: 8px 0; padding-left: 20px; }
+      .rich ul {
+        margin: 8px 0;
+        padding-left: 20px;
+      }
 
-    .hint {
-      background: var(--accent-soft);
-      border: 1px solid var(--accent-border);
-      border-radius: var(--radius);
-      padding: 16px;
-      font-size: 13px;
-      color: #1e40af;
-    }
+      .hint {
+        background: var(--accent-soft);
+        border: 1px solid var(--accent-border);
+        border-radius: var(--radius);
+        padding: 16px;
+        font-size: 13px;
+        color: #1e40af;
+      }
 
-    .hint p.title { font-weight: 600; margin: 0 0 8px; }
-    .hint ol { margin: 0; padding-left: 20px; }
-    .hint li { margin-bottom: 4px; }
-    .hint code {
-      background: #dbe6ff;
-      border-radius: 4px;
-      padding: 1px 5px;
-      font-size: 12px;
-    }
-    .hint .note { margin: 12px 0 0; font-size: 12px; }
+      .hint p.title {
+        font-weight: 600;
+        margin: 0 0 8px;
+      }
+      .hint ol {
+        margin: 0;
+        padding-left: 20px;
+      }
+      .hint li {
+        margin-bottom: 4px;
+      }
+      .hint code {
+        background: #dbe6ff;
+        border-radius: 4px;
+        padding: 1px 5px;
+        font-size: 12px;
+      }
+      .hint .note {
+        margin: 12px 0 0;
+        font-size: 12px;
+      }
 
-    footer {
-      margin-top: 28px;
-      text-align: center;
-      font-size: 12px;
-      color: var(--muted);
-    }
+      footer {
+        margin-top: 28px;
+        text-align: center;
+        font-size: 12px;
+        color: var(--muted);
+      }
 
-    footer a { color: var(--accent); text-decoration: none; }
-    footer a:hover { text-decoration: underline; }
-  </style>
-</head>
+      footer a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      footer a:hover {
+        text-decoration: underline;
+      }
+    </style>
+  </head>
 
-<body>
-  <div class="wrap">
-    <header>
-      <h1>Ancroo Web &mdash; Live Demo</h1>
-      <p class="lead">
-        Try the text-transformation workflows right here. Select any text below,
-        open the Ancroo side panel, and run a workflow.
-      </p>
-      <p class="links">
-        <a href="https://github.com/ancroo/ancroo-web" target="_blank" rel="noopener">GitHub repo</a>
-      </p>
-    </header>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>Ancroo Web &mdash; Live Demo</h1>
+        <p class="lead">
+          Try the text-transformation workflows right here. Select any text below, open the Ancroo
+          side panel, and run a workflow.
+        </p>
+        <p class="links">
+          <a href="https://github.com/ancroo/ancroo-web" target="_blank" rel="noopener"
+            >GitHub repo</a
+          >
+        </p>
+      </header>
 
-    <!-- Section 1: Text Areas -->
-    <section class="card">
-      <h2>Text areas</h2>
+      <!-- Section 1: Text Areas -->
+      <section class="card">
+        <h2>Text areas</h2>
 
-      <div class="field">
-        <label>English text with errors (try "Fix Grammar")</label>
-        <textarea rows="4">Their going to the store tommorow, but they dont no what too buy. The weater forecast says its going to rain, so they should probaly bring an umbrella. Me and him was thinking about going to the libary afterwards.</textarea>
-      </div>
+        <div class="field">
+          <label>English text with errors (try "Fix Grammar")</label>
+          <textarea rows="4">
+Their going to the store tommorow, but they dont no what too buy. The weater forecast says its going to rain, so they should probaly bring an umbrella. Me and him was thinking about going to the libary afterwards.</textarea
+          >
+        </div>
 
-      <div class="field">
-        <label>German text (try "Translate to English" or "Rewrite Formal")</label>
-        <textarea rows="4">Die kuenstliche Intelligenz veraendert unsere Arbeitswelt grundlegend. Viele Aufgaben, die frueher manuell erledigt wurden, koennen heute automatisiert werden. Das spart Zeit und reduziert Fehler, erfordert aber auch neue Kompetenzen.</textarea>
-      </div>
+        <div class="field">
+          <label>German text (try "Translate to English" or "Rewrite Formal")</label>
+          <textarea rows="4">
+Die kuenstliche Intelligenz veraendert unsere Arbeitswelt grundlegend. Viele Aufgaben, die frueher manuell erledigt wurden, koennen heute automatisiert werden. Das spart Zeit und reduziert Fehler, erfordert aber auch neue Kompetenzen.</textarea
+          >
+        </div>
 
-      <div class="field">
-        <label>Code snippet (try "Explain")</label>
-        <textarea class="mono" rows="6">def calcPrice(items, tax):
+        <div class="field">
+          <label>Code snippet (try "Explain")</label>
+          <textarea class="mono" rows="6">
+def calcPrice(items, tax):
     total = 0
     for i in items:
         total = total + i['price'] * i['qty']
     total = total + (total * tax)
-    return total</textarea>
-      </div>
-    </section>
-
-    <!-- Section 2: Input Fields -->
-    <section class="card">
-      <h2>Input fields</h2>
-
-      <div class="grid-2" style="margin-bottom: 14px;">
-        <div>
-          <label>Name (try "Fix Capitalization")</label>
-          <input type="text" value="max mustermann" />
+    return total</textarea
+          >
         </div>
-        <div>
-          <label>Email</label>
-          <input type="text" value="Max.Mustermann@EXAMPLE.com" />
+      </section>
+
+      <!-- Section 2: Input Fields -->
+      <section class="card">
+        <h2>Input fields</h2>
+
+        <div class="grid-2" style="margin-bottom: 14px">
+          <div>
+            <label>Name (try "Fix Capitalization")</label>
+            <input type="text" value="max mustermann" />
+          </div>
+          <div>
+            <label>Email</label>
+            <input type="text" value="Max.Mustermann@EXAMPLE.com" />
+          </div>
         </div>
-      </div>
 
-      <div class="field">
-        <label>Address (try "Fix Capitalization")</label>
-        <input type="text" value="hauptstrasse 42, 80331 muenchen, deutschland" />
-      </div>
+        <div class="field">
+          <label>Address (try "Fix Capitalization")</label>
+          <input type="text" value="hauptstrasse 42, 80331 muenchen, deutschland" />
+        </div>
 
-      <div class="field">
-        <label>Notes</label>
-        <input type="text" value="meeting mit hr. schmidt am montag um 14 uhr im konferenzraum b" />
-      </div>
-    </section>
+        <div class="field">
+          <label>Notes</label>
+          <input
+            type="text"
+            value="meeting mit hr. schmidt am montag um 14 uhr im konferenzraum b"
+          />
+        </div>
+      </section>
 
-    <!-- Section 3: Contenteditable -->
-    <section class="card">
-      <h2>Rich text (contenteditable)</h2>
-      <div class="rich" contenteditable="true">
-        <p>This is a <strong>rich text</strong> area. Select part of this text and run a workflow to see its output action in action:</p>
-        <ul>
-          <li><em>Replace selection</em> &mdash; e.g. "Rewrite Formal" or "Fix Grammar" swaps your selection in place</li>
-          <li><em>Show in side panel</em> &mdash; e.g. "Summarize" or "Explain" leaves the text untouched and shows the result on the side</li>
-        </ul>
-        <p>Want text inserted <em>before</em>/<em>after</em> the selection, or copied to the clipboard instead? Those output actions are available too &mdash; pick them when you build your own workflow in the editor.</p>
-      </div>
-    </section>
+      <!-- Section 3: Contenteditable -->
+      <section class="card">
+        <h2>Rich text (contenteditable)</h2>
+        <div class="rich" contenteditable="true">
+          <p>
+            This is a <strong>rich text</strong> area. Select part of this text and run a workflow
+            to see its output action in action:
+          </p>
+          <ul>
+            <li>
+              <em>Replace selection</em> &mdash; e.g. "Rewrite Formal" or "Fix Grammar" swaps your
+              selection in place
+            </li>
+            <li>
+              <em>Show in side panel</em> &mdash; e.g. "Summarize" or "Explain" leaves the text
+              untouched and shows the result on the side
+            </li>
+          </ul>
+          <p>
+            Want text inserted <em>before</em>/<em>after</em> the selection, or copied to the
+            clipboard instead? Those output actions are available too &mdash; pick them when you
+            build your own workflow in the editor.
+          </p>
+        </div>
+      </section>
 
-    <!-- Section 4: Sample Email -->
-    <section class="card">
-      <h2>Sample email (warranty claim)</h2>
-      <div class="field">
-        <label>Email body &mdash; try "Summarize", or reply with "Draft Reply" / "Polite Decline"</label>
-        <textarea rows="16">Dear Customer Support,
+      <!-- Section 4: Sample Email -->
+      <section class="card">
+        <h2>Sample email (warranty claim)</h2>
+        <div class="field">
+          <label
+            >Email body &mdash; try "Summarize", or reply with "Draft Reply" / "Polite
+            Decline"</label
+          >
+          <textarea rows="16">
+Dear Customer Support,
 
 I am writing to formally request a warranty claim for a product I purchased from your online store on January 14, 2026.
 
@@ -267,16 +329,20 @@ Best regards,
 James Whitfield
 17 Oakridge Lane, Bristol BS3 4TP
 Phone: +44 117 496 0023
-Email: j.whitfield@example.com</textarea>
-      </div>
-    </section>
+Email: j.whitfield@example.com</textarea
+          >
+        </div>
+      </section>
 
-    <!-- Section 5: Short Email (reply / decline / thank-you) -->
-    <section class="card">
-      <h2>Short email (invitation)</h2>
-      <div class="field">
-        <label>A quick request &mdash; try "Draft Reply", "Polite Decline", or "Thank-You Note"</label>
-        <textarea rows="9">Hi,
+      <!-- Section 5: Short Email (reply / decline / thank-you) -->
+      <section class="card">
+        <h2>Short email (invitation)</h2>
+        <div class="field">
+          <label
+            >A quick request &mdash; try "Draft Reply", "Polite Decline", or "Thank-You Note"</label
+          >
+          <textarea rows="9">
+Hi,
 
 We really enjoyed your recent write-up on Ancroo and would love to invite you to give a 20-minute talk at our community meetup on March 12th. We can cover travel costs and would record the session for our channel.
 
@@ -284,29 +350,50 @@ Would you be open to it? Happy to work around your schedule.
 
 Best,
 Priya Nair
-Community Lead, DevCircle</textarea>
-      </div>
-    </section>
+Community Lead, DevCircle</textarea
+          >
+        </div>
+      </section>
 
-    <!-- How to use -->
-    <section class="hint">
-      <p class="title">How to use</p>
-      <ol>
-        <li>Install the Ancroo Web extension and configure at least one LLM provider (the 10 starter workflows are created automatically).</li>
-        <li>Select text in any field above.</li>
-        <li>Open the Ancroo side panel (toolbar icon, or <code>Alt+Shift+Y</code>). You can assign a custom hotkey to any workflow in its editor.</li>
-        <li>Pick a workflow and run it &mdash; e.g. Summarize, Translate to English, Rewrite Formal, Explain, Fix Grammar, Fix Capitalization, Draft Reply, Polite Decline, or Thank-You Note.</li>
-        <li>The starter workflows either <strong>replace your selection</strong> (Translate, Rewrite, Fix Grammar, Fix Capitalization) or <strong>show the result in the side panel</strong> (Summarize, Explain, the reply workflows). Your own workflows can also insert before/after the selection or copy to the clipboard.</li>
-      </ol>
-      <p class="note">
-        <strong>Manual-input workflows</strong> (like "Ask AI") don't need a selection &mdash; just open the side panel and type your text.
-      </p>
-    </section>
+      <!-- How to use -->
+      <section class="hint">
+        <p class="title">How to use</p>
+        <ol>
+          <li>
+            Install the Ancroo Web extension and configure at least one LLM provider (the 10 starter
+            workflows are created automatically).
+          </li>
+          <li>Select text in any field above.</li>
+          <li>
+            Open the Ancroo side panel (toolbar icon, or <code>Alt+Shift+Y</code>). You can assign a
+            custom hotkey to any workflow in its editor.
+          </li>
+          <li>
+            Pick a workflow and run it &mdash; e.g. Summarize, Translate to English, Rewrite Formal,
+            Explain, Fix Grammar, Fix Capitalization, Draft Reply, Polite Decline, or Thank-You
+            Note.
+          </li>
+          <li>
+            The starter workflows either <strong>replace your selection</strong> (Translate,
+            Rewrite, Fix Grammar, Fix Capitalization) or
+            <strong>show the result in the side panel</strong> (Summarize, Explain, the reply
+            workflows). Your own workflows can also insert before/after the selection or copy to the
+            clipboard.
+          </li>
+        </ol>
+        <p class="note">
+          <strong>Manual-input workflows</strong> (like "Ask AI") don't need a selection &mdash;
+          just open the side panel and type your text.
+        </p>
+      </section>
 
-    <footer>
-      Part of <a href="https://github.com/ancroo/ancroo-web" target="_blank" rel="noopener">ancroo/ancroo-web</a>
-      &middot; AI Workflow Browser Extension (Direct/Local mode)
-    </footer>
-  </div>
-</body>
+      <footer>
+        Part of
+        <a href="https://github.com/ancroo/ancroo-web" target="_blank" rel="noopener"
+          >ancroo/ancroo-web</a
+        >
+        &middot; AI Workflow Browser Extension (Direct/Local mode)
+      </footer>
+    </div>
+  </body>
 </html>

@@ -12,13 +12,13 @@ Ancroo has no servers and no analytics — the developer never receives your dat
 
 All data is stored locally in your browser using `chrome.storage.local`:
 
-| Data              | Purpose                                             | Stored where           |
-| ----------------- | --------------------------------------------------- | ---------------------- |
-| Settings          | Extension configuration (provider URL, model)       | `chrome.storage.local` |
-| API keys          | Authentication with LLM providers                   | `chrome.storage.local` |
-| Actions           | User-created action definitions                     | `chrome.storage.local` |
-| Hotkey bindings   | Keyboard shortcut assignments                       | `chrome.storage.local` |
-| Execution history | Last 50 action results for quick access             | `chrome.storage.local` |
+| Data              | Purpose                                       | Stored where           |
+| ----------------- | --------------------------------------------- | ---------------------- |
+| Settings          | Extension configuration (provider URL, model) | `chrome.storage.local` |
+| API keys          | Authentication with LLM providers             | `chrome.storage.local` |
+| Actions           | User-created action definitions               | `chrome.storage.local` |
+| Hotkey bindings   | Keyboard shortcut assignments                 | `chrome.storage.local` |
+| Execution history | Last 50 action results for quick access       | `chrome.storage.local` |
 
 `chrome.storage.local` is sandboxed per extension — websites and other extensions cannot access it. The storage is not encrypted on disk; anyone with access to your browser profile can read it.
 
@@ -43,15 +43,15 @@ Ancroo does **not** collect:
 
 ## Permissions
 
-| Permission                            | Why it is needed                                                   |
-| ------------------------------------- | ------------------------------------------------------------------ |
+| Permission                            | Why it is needed                                                                      |
+| ------------------------------------- | ------------------------------------------------------------------------------------- |
 | `activeTab`                           | Read the active tab's URL/title and message its content script when you run an action |
-| `sidePanel`                           | Display the side panel UI                                          |
-| `storage`                             | Store settings, actions, history, and hotkey bindings locally      |
-| `scripting`                           | Inject content scripts for text selection and result insertion     |
-| `clipboardWrite`                      | Copy an action result to the clipboard (copy-to-clipboard output action) |
-| `downloads`                           | Save the backup file when you export your actions/settings to JSON |
-| `declarativeNetRequestWithHostAccess` | Override the Origin header for local Ollama CORS compatibility      |
+| `sidePanel`                           | Display the side panel UI                                                             |
+| `storage`                             | Store settings, actions, history, and hotkey bindings locally                         |
+| `scripting`                           | Inject content scripts for text selection and result insertion                        |
+| `clipboardWrite`                      | Copy an action result to the clipboard (copy-to-clipboard output action)              |
+| `downloads`                           | Save the backup file when you export your actions/settings to JSON                    |
+| `declarativeNetRequestWithHostAccess` | Override the Origin header for local Ollama CORS compatibility                        |
 
 Host permissions for known LLM APIs (OpenAI, Anthropic, Gemini, OpenRouter) and localhost are declared in the manifest. Custom provider URLs are requested via `chrome.permissions.request()` only when needed.
 
