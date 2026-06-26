@@ -108,20 +108,39 @@ function friendlyDirectError(msg: string): string {
   if (lower.includes("abort") || lower.includes("timed out")) {
     return "The AI model took too long to respond. Try a shorter input or a faster model.";
   }
-  if (lower.includes("not found") || lower.includes("does not exist")) {
-    const modelMatch = msg.match(/model[:\s'"]+([^\s'"]+)/i);
-    const modelName = modelMatch?.[1] ?? "unknown";
-    return `Model "${modelName}" not found. Check that it is available with your provider.`;
-  }
+  // Auth and credit problems are checked before "not found": providers (e.g.
+  // OpenRouter) often phrase a revoked key or empty balance with wording that
+  // also contains "not found", which would otherwise be mislabeled as a missing
+  // model and send the user chasing the wrong setting.
   if (
     lower.includes("401") ||
+    lower.includes("403") ||
     lower.includes("unauthorized") ||
-    lower.includes("invalid api key")
+    lower.includes("invalid api key") ||
+    lower.includes("no auth credentials") ||
+    lower.includes("authentication")
   ) {
-    return "Invalid API key. Check your provider settings.";
+    return "Invalid or missing API key. Check your provider settings.";
+  }
+  if (
+    lower.includes("402") ||
+    lower.includes("insufficient") ||
+    lower.includes("quota") ||
+    lower.includes("billing") ||
+    lower.includes("credit")
+  ) {
+    return "The provider rejected the request for billing reasons (out of credits or quota). Check your account.";
   }
   if (lower.includes("429") || lower.includes("rate limit")) {
     return "Rate limit exceeded. Wait a moment and try again.";
+  }
+  if (lower.includes("not found") || lower.includes("does not exist")) {
+    // Only name a model when one was actually parsed from the error — otherwise
+    // a bare fallback ("unknown") wrongly implies the model is the problem.
+    const modelName = msg.match(/model[:\s'"]+([^\s'"]+)/i)?.[1];
+    return modelName
+      ? `Model "${modelName}" not found. Check that it is available with your provider.`
+      : "The provider could not find the requested model. Check the model selection and your provider settings.";
   }
   if (lower.includes("500") || lower.includes("internal server error")) {
     return "The AI provider returned an internal error. Try again later.";
