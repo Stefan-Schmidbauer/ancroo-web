@@ -57,7 +57,11 @@ async function fetchOpenAIModels(provider: LLMProviderConfig): Promise<ModelInfo
 }
 
 async function fetchGeminiModels(provider: LLMProviderConfig): Promise<ModelInfo[]> {
-  const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
+  // ListModels paginates (default page size 50). A high pageSize keeps the whole
+  // catalog on one page so newer models can't fall off the unfetched tail — fine
+  // here since Gemini lists far fewer than this; if it ever exceeds it we'd need
+  // to follow nextPageToken.
+  const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000", {
     headers: { "x-goog-api-key": provider.api_key },
   });
   if (!res.ok) throw new Error(`Gemini error ${res.status}`);

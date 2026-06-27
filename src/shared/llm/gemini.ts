@@ -46,6 +46,16 @@ export async function callGemini(
 
   if (!res.ok) {
     const text = await res.text();
+    // Google keeps retired models in ListModels — with "generateContent" still
+    // in their supportedGenerationMethods — so a model can look perfectly
+    // selectable yet 404 here. Surface that as a clear, actionable message
+    // instead of the raw API JSON. We deliberately don't name a replacement
+    // model; any suggestion would itself go stale as Google retires more.
+    if (res.status === 404) {
+      throw new Error(
+        `Gemini model "${request.model}" is no longer available from Google. Please select a different model.`,
+      );
+    }
     throw new Error(`Gemini API error ${res.status}: ${text}`);
   }
 

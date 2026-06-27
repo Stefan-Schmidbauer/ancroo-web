@@ -3,6 +3,7 @@ import type { LLMProviderConfig, LLMProviderType } from "@/shared/settings";
 import { ensureHostPermission } from "@/shared/host-permission";
 import { listLocalWorkflows } from "@/shared/local-workflows";
 import { fetchModels, type ModelInfo } from "@/shared/llm/models";
+import { probeModel } from "@/shared/llm";
 
 const PROVIDER_TYPES: { value: LLMProviderType; label: string }[] = [
   { value: "openai", label: "OpenAI" },
@@ -60,6 +61,10 @@ export function ProviderSettings({ providers, onSave }: Props) {
   // the connection that has been verified. The model picker and Save stay locked
   // until this matches the credentials on screen.
   const [verifiedCreds, setVerifiedCreds] = useState<string | null>(null);
+  // Result of probing the selected model with a real chat call: { ok } tells
+  // success from failure, `text` is the model's reply (or the error message).
+  const [probing, setProbing] = useState(false);
+  const [probeResult, setProbeResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{
     id: string;
     name: string;
@@ -104,6 +109,7 @@ export function ProviderSettings({ providers, onSave }: Props) {
     setAvailableModels([]);
     setVerifiedCreds(null);
     setTestResult(null);
+    setProbeResult(null);
   }
 
   function startEdit(provider: LLMProviderConfig) {
@@ -113,6 +119,7 @@ export function ProviderSettings({ providers, onSave }: Props) {
     // user can re-save without testing again unless they change the connection.
     setVerifiedCreds(credsFingerprint(provider));
     setTestResult(null);
+    setProbeResult(null);
   }
 
   async function startDelete(id: string, name: string) {
@@ -173,6 +180,7 @@ export function ProviderSettings({ providers, onSave }: Props) {
     if (editing.type === "openai-compatible" && !editing.base_url?.trim()) return;
     setTesting(true);
     setTestResult(null);
+    setProbeResult(null);
 
     try {
       // Request host permission for custom URLs (Ollama, OpenAI-compatible)
@@ -208,6 +216,24 @@ export function ProviderSettings({ providers, onSave }: Props) {
       }
     } finally {
       setTesting(false);
+    }
+  }
+
+  // Probe the selected model with a real chat call. A model showing up in the
+  // list is no guarantee it works — Gemini keeps retired models in its list that
+  // 404 on the actual call — so this is the only reliable check, and it shows
+  // the user what the endpoint reports itself to be.
+  async function handleProbeModel() {
+    if (!editing || !editing.model?.trim()) return;
+    setProbing(true);
+    setProbeResult(null);
+    try {
+      const reply = await probeModel(editing, editing.model);
+      setProbeResult({ ok: true, text: reply || "(model returned an empty reply)" });
+    } catch (err) {
+      setProbeResult({ ok: false, text: err instanceof Error ? err.message : "Model test failed" });
+    } finally {
+      setProbing(false);
     }
   }
 
@@ -359,9 +385,10 @@ export function ProviderSettings({ providers, onSave }: Props) {
           ) : availableModels.length > 0 ? (
             <select
               value={editing.model ?? ""}
-              onChange={(e) =>
-                setEditing({ ...editing, model: (e.target as HTMLSelectElement).value })
-              }
+              onChange={(e) => {
+                setProbeResult(null);
+                setEditing({ ...editing, model: (e.target as HTMLSelectElement).value });
+              }}
               class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
             >
               <option value="" disabled>
@@ -383,9 +410,10 @@ export function ProviderSettings({ providers, onSave }: Props) {
             <input
               type="text"
               value={editing.model ?? ""}
-              onInput={(e) =>
-                setEditing({ ...editing, model: (e.target as HTMLInputElement).value })
-              }
+              onInput={(e) => {
+                setProbeResult(null);
+                setEditing({ ...editing, model: (e.target as HTMLInputElement).value });
+              }}
               class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
               placeholder="Enter a model name"
             />
@@ -395,6 +423,30 @@ export function ProviderSettings({ providers, onSave }: Props) {
               ? "Select the model to use — it's prefilled when you create a new action."
               : "Prefilled when you create a new action with this provider."}
           </p>
+
+          {/* Verify the chosen model with a real call. A listed model can still
+              404 at chat time (Gemini keeps retired models in its list), so this
+              is the only reliable check — and it shows what the model reports. */}
+          {credsVerified && editing.model?.trim() && (
+            <div class="mt-1.5">
+              <button
+                onClick={handleProbeModel}
+                disabled={probing}
+                class="text-xs px-2 py-1 border rounded text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {probing ? "Testing model…" : "Test model"}
+              </button>
+              {probeResult && (
+                <div
+                  class={`text-xs mt-1 rounded px-2 py-1.5 ${
+                    probeResult.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+                  }`}
+                >
+                  {probeResult.ok ? `Model replied: ${probeResult.text}` : probeResult.text}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Step 3 — save, enabled once the connection is verified and a model chosen. */}
