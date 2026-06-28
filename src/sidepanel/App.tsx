@@ -82,6 +82,16 @@ export function App() {
       if (area === "local" && changes.history) {
         setHistory((changes.history.newValue as HistoryEntry[] | undefined) ?? []);
       }
+      // An already-open panel must also react to results the background computed
+      // for hotkey-triggered workflows. loadData() reads pendingResult only once
+      // on mount, so without this the result never appears when the panel was
+      // already open (the background's sidePanel.open() is then a no-op).
+      if (area === "session" && changes.pendingResult?.newValue) {
+        const pending = changes.pendingResult.newValue as { text: string; workflowName: string };
+        void chrome.storage.session.remove("pendingResult");
+        setResultText(pending.text);
+        setResultWorkflowName(pending.workflowName);
+      }
     };
     chrome.storage.onChanged.addListener(listener);
     return () => chrome.storage.onChanged.removeListener(listener);
