@@ -32,23 +32,23 @@ export async function callLLM(
 }
 
 /**
- * Send a tiny real request to verify a model can actually serve a chat call and
- * to reveal what the endpoint really is. Listing a model isn't proof it works —
- * Gemini, for instance, keeps retired models in its model list that 404 on the
- * actual call. The returned text is the model's self-reported identity, shown to
- * the user as a sanity check; it's informational only (models often misname
- * themselves) — the real signal is whether this call succeeds or throws.
+ * Send a tiny real request to verify a model can actually serve a chat call.
+ * Listing a model isn't proof it works — Gemini, for instance, keeps retired
+ * models in its list that 404 on the actual call. The only signal that matters
+ * is whether this call succeeds or throws: any reply means the model is usable,
+ * so we don't inspect the content (a model's self-reported name is unreliable —
+ * it routinely misnames itself — and reasoning models may return empty text
+ * once they've spent the token budget on thinking). Tokens are kept minimal.
  */
 export async function probeModel(
   provider: LLMProviderConfig,
   model: string,
   signal?: AbortSignal,
-): Promise<string> {
-  const res = await callLLM(provider, {
+): Promise<void> {
+  await callLLM(provider, {
     model,
-    user_prompt: "What model are you? Reply with only your model name and version, nothing else.",
-    max_tokens: 50,
+    user_prompt: "Reply with OK.",
+    max_tokens: 16,
     signal,
   });
-  return res.text.trim();
 }

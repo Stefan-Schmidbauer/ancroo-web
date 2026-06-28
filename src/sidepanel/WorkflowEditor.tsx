@@ -20,6 +20,13 @@ const OUTPUT_ACTIONS = [
   { value: "insert_after", label: "Insert after selection" },
 ];
 
+// Outputs that write back into the page need a selection to anchor to. Only the
+// selection inputs produce one — "Whole page" and "Manual entry" don't — so for
+// those inputs these actions are hidden, leaving "Show in panel" / "Copy".
+const SELECTION_OUTPUTS = new Set(["replace_selection", "insert_before", "insert_after"]);
+const inputHasSelection = (input: CollectionRecipe["input"]): boolean =>
+  input === "selection_html" || input === "selection_plain";
+
 interface Props {
   workflow: LocalWorkflow | null;
   providers: LLMProviderConfig[];
@@ -77,6 +84,15 @@ export function WorkflowEditor({
       }
     }
   }, [providerId]);
+
+  // Keep Output valid for the chosen Input: a selection-based output without a
+  // selection input has nothing to anchor to, so fall back to showing the result
+  // in the panel when the combination becomes invalid.
+  useEffect(() => {
+    if (!inputHasSelection(inputSource) && SELECTION_OUTPUTS.has(outputAction)) {
+      setOutputAction("side_panel_only");
+    }
+  }, [inputSource, outputAction]);
 
   async function loadModels(provider?: LLMProviderConfig) {
     const p = provider ?? providers.find((pr) => pr.id === providerId);
@@ -305,12 +321,19 @@ export function WorkflowEditor({
               onChange={(e) => setOutputAction((e.target as HTMLSelectElement).value)}
               class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
             >
-              {OUTPUT_ACTIONS.map((a) => (
+              {OUTPUT_ACTIONS.filter(
+                (a) => inputHasSelection(inputSource) || !SELECTION_OUTPUTS.has(a.value),
+              ).map((a) => (
                 <option key={a.value} value={a.value}>
                   {a.label}
                 </option>
               ))}
             </select>
+            {!inputHasSelection(inputSource) && (
+              <p class="text-xs text-gray-400 mt-0.5">
+                Selection-based outputs need a selection input.
+              </p>
+            )}
           </div>
           <div>
             <label class="text-xs font-medium text-gray-700">Hotkey</label>

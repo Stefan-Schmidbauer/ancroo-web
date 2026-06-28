@@ -304,6 +304,17 @@ export function App() {
         };
       }
 
+      // Selection inputs need actual selected text. Bail out before the LLM call
+      // (and tokens) when nothing is selected, instead of sending an empty input.
+      const usesSelection =
+        !workflow.recipe ||
+        workflow.recipe.input === "selection_html" ||
+        workflow.recipe.input === "selection_plain";
+      if (usesSelection && !inputData.text?.trim()) {
+        setError("Select some text on the page first, then run this action.");
+        return;
+      }
+
       const result = await executeWorkflowUnified(workflow, inputData);
 
       const entry: HistoryEntry = {

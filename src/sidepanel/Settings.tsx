@@ -41,6 +41,10 @@ export function Settings({ onClose }: Props) {
     try {
       setBackupStatus(null);
       const result = await importBackup(file);
+      // Refresh the provider list so imported providers show up immediately,
+      // instead of only after closing and reopening Settings.
+      const settings = await getSettings();
+      setProviders(settings.llm_providers);
       setBackupStatus({
         msg: `Imported ${result.workflows} action${result.workflows !== 1 ? "s" : ""}, ${result.providers} provider${result.providers !== 1 ? "s" : ""}.`,
         ok: true,

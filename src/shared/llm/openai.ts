@@ -15,6 +15,16 @@ export function resolveBaseUrl(provider: LLMProviderConfig): string {
   return (provider.base_url || DEFAULT_BASE_URL).replace(/\/+$/, "");
 }
 
+/** Turn an OpenAI error body into a clear message. Surfaces the common
+ *  "responses-only model" case (gpt-5-pro, o1-pro, image models, …) in plain
+ *  language, since the chat endpoint we use can't serve those models at all. */
+function formatOpenAIError(status: number, body: string): string {
+  if (/only supported in v1\/responses/i.test(body)) {
+    return "This model only works with OpenAI's Responses API, which this extension doesn't use. Pick a chat-capable model instead.";
+  }
+  return `OpenAI API error ${status}: ${body}`;
+}
+
 export async function callOpenAI(
   provider: LLMProviderConfig,
   request: LLMRequest,
@@ -27,13 +37,6 @@ export async function callOpenAI(
   }
   messages.push({ role: "user", content: request.user_prompt });
 
-  const body: Record<string, unknown> = {
-    model: request.model,
-    messages,
-  };
-  if (request.max_tokens != null) body.max_tokens = request.max_tokens;
-  if (request.temperature != null) body.temperature = request.temperature;
-
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
@@ -41,16 +44,33 @@ export async function callOpenAI(
     headers.Authorization = `Bearer ${provider.api_key}`;
   }
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-    signal: request.signal,
-  });
+  // OpenAI's newer (reasoning) models reject `max_tokens` and require
+  // `max_completion_tokens`; older models and OpenAI-compatible servers
+  // (OpenRouter, Ollama, vLLM, …) still expect `max_tokens`. The model name
+  // doesn't reliably tell us which, so send `max_tokens` first and transparently
+  // retry with `max_completion_tokens` only on that specific 400.
+  const buildBody = (tokenParam: "max_tokens" | "max_completion_tokens") => {
+    const body: Record<string, unknown> = { model: request.model, messages };
+    if (request.max_tokens != null) body[tokenParam] = request.max_tokens;
+    if (request.temperature != null) body.temperature = request.temperature;
+    return JSON.stringify(body);
+  };
+
+  const post = (tokenParam: "max_tokens" | "max_completion_tokens") =>
+    fetch(url, { method: "POST", headers, body: buildBody(tokenParam), signal: request.signal });
+
+  let res = await post("max_tokens");
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`OpenAI API error ${res.status}: ${text}`);
+    const needsCompletionTokens =
+      res.status === 400 && request.max_tokens != null && /max_completion_tokens/.test(text);
+    if (needsCompletionTokens) {
+      res = await post("max_completion_tokens");
+      if (!res.ok) throw new Error(formatOpenAIError(res.status, await res.text()));
+    } else {
+      throw new Error(formatOpenAIError(res.status, text));
+    }
   }
 
   const data = await res.json();

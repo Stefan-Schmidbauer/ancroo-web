@@ -1,4 +1,4 @@
-import { useState, useEffect } from "preact/hooks";
+import { useState, useEffect, useRef } from "preact/hooks";
 import type { LLMProviderConfig, LLMProviderType } from "@/shared/settings";
 import { ensureHostPermission } from "@/shared/host-permission";
 import { listLocalWorkflows } from "@/shared/local-workflows";
@@ -62,9 +62,13 @@ export function ProviderSettings({ providers, onSave }: Props) {
   // until this matches the credentials on screen.
   const [verifiedCreds, setVerifiedCreds] = useState<string | null>(null);
   // Result of probing the selected model with a real chat call: { ok } tells
-  // success from failure, `text` is the model's reply (or the error message).
+  // success from failure, `text` is the status message (OK note or error text).
   const [probing, setProbing] = useState(false);
   const [probeResult, setProbeResult] = useState<{ ok: boolean; text: string } | null>(null);
+  // The currently in-flight probe. A new probe (or leaving the editor) aborts the
+  // previous one, so a slow earlier reply can't overwrite a newer selection's
+  // result — the displayed status always belongs to the latest picked model.
+  const probeAbort = useRef<AbortController | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{
     id: string;
     name: string;
@@ -84,8 +88,14 @@ export function ProviderSettings({ providers, onSave }: Props) {
       .then((models) => {
         if (!cancelled) setAvailableModels(models);
       })
-      .catch(() => {
-        if (!cancelled) setAvailableModels([]);
+      .catch((err) => {
+        if (cancelled) return;
+        setAvailableModels([]);
+        // Don't leave a silently blank picker — surface why the list is empty.
+        // A 404 from an OpenAI-compatible server just means it has no /models
+        // route (manual entry is fine); anything else is a real problem to show.
+        const msg = err instanceof Error ? err.message : "Could not load models";
+        setTestResult(editing.type === "openai-compatible" && /\b404\b/.test(msg) ? "manual" : msg);
       })
       .finally(() => {
         if (!cancelled) setLoadingModels(false);
@@ -94,6 +104,18 @@ export function ProviderSettings({ providers, onSave }: Props) {
       cancelled = true;
     };
     // Only re-run when switching to a different provider, not on every keystroke.
+  }, [editing?.id]);
+
+  // Abort an in-flight model probe when the editor closes or switches providers,
+  // so a late reply can't surface under a different (or no) provider. The aborted
+  // probe deliberately skips its own cleanup, so reset the probe UI here.
+  useEffect(() => {
+    return () => {
+      probeAbort.current?.abort();
+      probeAbort.current = null;
+      setProbing(false);
+      setProbeResult(null);
+    };
   }, [editing?.id]);
 
   function startAdd() {
@@ -205,14 +227,18 @@ export function ProviderSettings({ providers, onSave }: Props) {
       setTestResult("success");
     } catch (err) {
       setAvailableModels([]);
+      const msg = err instanceof Error ? err.message : "Connection failed";
       if (editing.type === "openai-compatible") {
-        // A /models route is optional for OpenAI-compatible servers, so a failed
-        // listing doesn't mean the connection is unusable. Accept it and let the
-        // user type the model name manually instead of blocking Save.
+        // A /models route is optional for OpenAI-compatible servers, so let the
+        // user type the model name manually instead of blocking Save. A 404 means
+        // the server simply has no listing route — fall back quietly. Any other
+        // failure (auth, wrong URL, network) is a real problem: keep the manual
+        // fallback but surface the actual error instead of hiding it behind a
+        // generic "no model list" message.
         setVerifiedCreds(credsFingerprint(editing));
-        setTestResult("manual");
+        setTestResult(/\b404\b/.test(msg) ? "manual" : msg);
       } else {
-        setTestResult(err instanceof Error ? err.message : "Connection failed");
+        setTestResult(msg);
       }
     } finally {
       setTesting(false);
@@ -221,19 +247,32 @@ export function ProviderSettings({ providers, onSave }: Props) {
 
   // Probe the selected model with a real chat call. A model showing up in the
   // list is no guarantee it works — Gemini keeps retired models in its list that
-  // 404 on the actual call — so this is the only reliable check, and it shows
-  // the user what the endpoint reports itself to be.
-  async function handleProbeModel() {
-    if (!editing || !editing.model?.trim()) return;
+  // 404 on the actual call — so this is the only reliable check. Any successful
+  // reply means OK; we don't show the content (self-reported names are unreliable).
+  // Runs the probe against an explicit provider+model so it can be called right
+  // after a selection (where `editing` state hasn't updated yet) without racing.
+  async function runProbe(prov: LLMProviderConfig, model: string) {
+    // Abort any probe still in flight so its (now stale) reply can't land after
+    // this one and show a result for a model the user already moved off of.
+    probeAbort.current?.abort();
+    const controller = new AbortController();
+    probeAbort.current = controller;
     setProbing(true);
     setProbeResult(null);
     try {
-      const reply = await probeModel(editing, editing.model);
-      setProbeResult({ ok: true, text: reply || "(model returned an empty reply)" });
+      await probeModel(prov, model, controller.signal);
+      if (controller.signal.aborted) return;
+      setProbeResult({ ok: true, text: "Model responded — OK" });
     } catch (err) {
+      // A newer probe (or leaving the editor) aborted this one — drop its result.
+      if (controller.signal.aborted) return;
       setProbeResult({ ok: false, text: err instanceof Error ? err.message : "Model test failed" });
     } finally {
-      setProbing(false);
+      // Only the latest probe owns the spinner; a superseded one must not clear it.
+      if (probeAbort.current === controller) {
+        probeAbort.current = null;
+        setProbing(false);
+      }
     }
   }
 
@@ -386,8 +425,14 @@ export function ProviderSettings({ providers, onSave }: Props) {
             <select
               value={editing.model ?? ""}
               onChange={(e) => {
-                setProbeResult(null);
-                setEditing({ ...editing, model: (e.target as HTMLSelectElement).value });
+                const model = (e.target as HTMLSelectElement).value;
+                const next = { ...editing, model };
+                setEditing(next);
+                // Auto-verify the picked model: a listed model can still fail at
+                // chat time (responses-only models, retired entries), so catch it
+                // here before saving rather than at inference.
+                if (model.trim()) void runProbe(next, model);
+                else setProbeResult(null);
               }}
               class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
             >
@@ -419,31 +464,25 @@ export function ProviderSettings({ providers, onSave }: Props) {
             />
           )}
           <p class="text-xs text-gray-400 mt-0.5">
-            {credsVerified && !loadingModels && !testing && !editing.model?.trim()
-              ? "Select the model to use — it's prefilled when you create a new action."
-              : "Prefilled when you create a new action with this provider."}
+            Selecting a model sends a short test prompt to check it works, using a few tokens.
           </p>
-
-          {/* Verify the chosen model with a real call. A listed model can still
-              404 at chat time (Gemini keeps retired models in its list), so this
-              is the only reliable check — and it shows what the model reports. */}
-          {credsVerified && editing.model?.trim() && (
+          {/* Selecting a model auto-probes it with a real call: a listed model can
+              still 404 at chat time (Gemini keeps retired models in its list), so
+              this is the only reliable check — any successful reply counts as OK. */}
+          {credsVerified && editing.model?.trim() && (probing || probeResult) && (
             <div class="mt-1.5">
-              <button
-                onClick={handleProbeModel}
-                disabled={probing}
-                class="text-xs px-2 py-1 border rounded text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              >
-                {probing ? "Testing model…" : "Test model"}
-              </button>
-              {probeResult && (
-                <div
-                  class={`text-xs mt-1 rounded px-2 py-1.5 ${
-                    probeResult.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
-                  }`}
-                >
-                  {probeResult.ok ? `Model replied: ${probeResult.text}` : probeResult.text}
-                </div>
+              {probing ? (
+                <div class="text-xs text-gray-400">Testing model…</div>
+              ) : (
+                probeResult && (
+                  <div
+                    class={`text-xs rounded px-2 py-1.5 ${
+                      probeResult.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+                    }`}
+                  >
+                    {probeResult.text}
+                  </div>
+                )
               )}
             </div>
           )}
