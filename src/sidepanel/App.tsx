@@ -280,13 +280,6 @@ export function App() {
       });
       if (!tab?.id) return;
 
-      // --- TEMP DIAGNOSTIC (remove after debugging) ---
-      // Logs which action was clicked, before the selection is read.
-      await sendToTab(tab.id, {
-        type: "DEBUG_LOG",
-        text: `RUN → "${workflow.name}" in:${workflow.recipe?.input ?? "(legacy/selection)"} action:${workflow.output_action ?? "-"}`,
-      } as ExtensionMessage).catch(() => {});
-
       const isManualInput = workflow.recipe?.input === "manual_input";
       const tabUrl = tab.url ?? "";
       if (
@@ -326,13 +319,6 @@ export function App() {
       }
 
       const result = await executeWorkflowUnified(workflow, inputData);
-
-      // --- TEMP DIAGNOSTIC (remove after debugging) ---
-      // Appends the LLM result outcome to the persistent on-page debug box.
-      await sendToTab(tab.id, {
-        type: "DEBUG_LOG",
-        text: `RES → ok:${result.result?.success} text:${result.result?.text?.length ?? 0} action:${workflow.output_action ?? result.result?.action ?? "-"} in:${workflow.recipe?.input ?? "-"} err:${result.result?.error ?? "-"}`,
-      } as ExtensionMessage).catch(() => {});
 
       const entry: HistoryEntry = {
         id: result.execution_id,
@@ -374,17 +360,6 @@ export function App() {
       }
     } catch (err) {
       console.error("Execution failed:", err);
-      // --- TEMP DIAGNOSTIC (remove after debugging) ---
-      try {
-        const [t] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (t?.id)
-          await sendToTab(t.id, {
-            type: "DEBUG_LOG",
-            text: `THROW → ${err instanceof Error ? err.message : String(err)}`,
-          } as ExtensionMessage).catch(() => {});
-      } catch {
-        /* ignore */
-      }
       setError(friendlyError(err instanceof Error ? err.message : String(err)));
     } finally {
       setExecuting(null);

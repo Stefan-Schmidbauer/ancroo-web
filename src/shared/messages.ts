@@ -62,12 +62,6 @@ export interface HideToastMessage {
   type: "HIDE_TOAST";
 }
 
-/** TEMP debugging: append a line to a persistent on-page debug box. */
-export interface DebugLogMessage {
-  type: "DEBUG_LOG";
-  text: string;
-}
-
 export interface WriteClipboardMessage {
   type: "WRITE_CLIPBOARD";
   text: string;
@@ -90,6 +84,5 @@ export type ExtensionMessage =
   | ExecuteHotkeyWorkflowMessage
   | ShowToastMessage
   | HideToastMessage
-  | DebugLogMessage
   | WriteClipboardMessage
   | WriteClipboardResultMessage;

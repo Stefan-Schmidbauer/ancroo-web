@@ -129,7 +129,6 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
   if (message.type === "GET_SELECTION") {
     let text = "";
     let html = "";
-    let source = "EMPTY";
 
     // 1. Live DOM selection — the source of truth. The page keeps its selection
     //    even when the side panel takes focus, so this is re-read fresh on every
@@ -141,38 +140,24 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
       text = sel.toString();
       const container = document.createElement("div");
       container.appendChild(sel.getRangeAt(0).cloneContents());
-      html = container.innerHTML;
-      source = "dom";
       // cloneContents() can return an empty fragment even when toString() has
-      // text (observed on some ranges). Keep selection_html from receiving an
-      // empty input by falling back to the plain text.
-      if (!html) {
-        html = text;
-        source = "dom-nohtml";
-      }
+      // text (observed on some ranges). Fall back to the plain text so
+      // selection_html never receives an empty input.
+      html = container.innerHTML || text;
     }
 
     // 2. Textarea/<input> selection — invisible to window.getSelection().
     //    Plain-text fields have no HTML, so selection_html falls back to text.
     if (!text) {
       text = getInputSelection();
-      if (text) {
-        html = text;
-        source = "input";
-      }
+      if (text) html = text;
     }
 
     // 3. Cached selection — last resort if the selection was cleared entirely.
     if (!text && cachedSelectionText) {
       text = cachedSelectionText;
       html = cachedSelectionHtml || cachedSelectionText;
-      source = "cache";
     }
-
-    // --- TEMP DIAGNOSTIC (remove after debugging) ---
-    showDebug(
-      `SEL → ${source} | text:${text.length} html:${html.length} | range:${sel?.rangeCount ?? 0}`,
-    );
 
     sendResponse({
       type: "SELECTION_RESULT",
@@ -225,11 +210,6 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
 
   if (message.type === "HIDE_TOAST") {
     hideToast();
-    return false;
-  }
-
-  if (message.type === "DEBUG_LOG") {
-    showDebug(message.text);
     return false;
   }
 
@@ -313,44 +293,4 @@ function hideToast(): void {
     setTimeout(() => el.remove(), 200);
   }
   clearTimeout(toastTimer);
-}
-
-// --- TEMP persistent debug box (remove after debugging) ---
-// Stays on screen and accumulates the last few lines, so values don't vanish
-// like toasts do.  Click it to clear.
-const DEBUG_ID = "__ancroo-debug";
-const debugLines: string[] = [];
-
-function showDebug(line: string): void {
-  const stamp = new Date().toLocaleTimeString();
-  debugLines.push(`${stamp}  ${line}`);
-  while (debugLines.length > 8) debugLines.shift();
-
-  let el = document.getElementById(DEBUG_ID);
-  if (!el) {
-    el = document.createElement("div");
-    el.id = DEBUG_ID;
-    el.style.cssText = [
-      "position:fixed",
-      "top:12px",
-      "left:12px",
-      "z-index:2147483647",
-      "max-width:480px",
-      "padding:10px 12px",
-      "border-radius:8px",
-      "background:rgba(17,24,39,.92)",
-      "color:#d1fae5",
-      "font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace",
-      "white-space:pre-wrap",
-      "box-shadow:0 4px 12px rgba(0,0,0,.35)",
-      "cursor:pointer",
-    ].join(";");
-    el.title = "Ancroo debug — click to clear";
-    el.addEventListener("click", () => {
-      debugLines.length = 0;
-      el?.remove();
-    });
-    document.documentElement.appendChild(el);
-  }
-  el.textContent = debugLines.join("\n");
 }
