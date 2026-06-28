@@ -5,8 +5,9 @@ import { smartInsertText, smartInsertBefore, smartInsertAfter } from "./text-ins
 
 // --- Selection helpers ---
 // window.getSelection() does NOT return text selected inside <textarea> or
-// <input> elements.  selectionStart/selectionEnd survive focus loss, so we
-// track the last focused input and read it directly on demand.
+// <input> elements, so we track the last focused field and read its selection
+// directly.  We only read it while that field is still the active element,
+// otherwise a selection left behind after blur would look like a current one.
 
 let lastFocusedInput: HTMLTextAreaElement | HTMLInputElement | null = null;
 
@@ -26,6 +27,12 @@ function getInputSelection(): string {
   if (
     el &&
     document.contains(el) &&
+    // Only honour the selection while the field is still focused. A textarea's
+    // selectionStart/End survive blur, so without this a selection left behind
+    // after the user clicked away would be returned as a stale "current"
+    // selection. Clicking the side panel keeps the field as activeElement
+    // (only window focus is lost), so genuine runs still work.
+    document.activeElement === el &&
     typeof el.selectionStart === "number" &&
     typeof el.selectionEnd === "number" &&
     el.selectionStart !== el.selectionEnd
@@ -34,25 +41,6 @@ function getInputSelection(): string {
   }
   return "";
 }
-
-// --- Selection caching ---
-// When the user clicks the side panel, the page loses focus and the browser
-// clears the active selection.  We cache the last non-empty selection so
-// GET_SELECTION can still return it.
-
-let cachedSelectionText = "";
-let cachedSelectionHtml = "";
-
-document.addEventListener("selectionchange", () => {
-  const sel = window.getSelection();
-  const text = sel?.toString() ?? "";
-  if (text.length > 0 && sel && sel.rangeCount > 0) {
-    cachedSelectionText = text;
-    const container = document.createElement("div");
-    container.appendChild(sel.getRangeAt(0).cloneContents());
-    cachedSelectionHtml = container.innerHTML;
-  }
-});
 
 // --- Hotkey handling ---
 
@@ -151,12 +139,6 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     if (!text) {
       text = getInputSelection();
       if (text) html = text;
-    }
-
-    // 3. Cached selection — last resort if the selection was cleared entirely.
-    if (!text && cachedSelectionText) {
-      text = cachedSelectionText;
-      html = cachedSelectionHtml || cachedSelectionText;
     }
 
     sendResponse({

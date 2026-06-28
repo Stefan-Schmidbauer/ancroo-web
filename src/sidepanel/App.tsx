@@ -306,13 +306,13 @@ export function App() {
 
       // Selection inputs need actual selected text. Bail out before the LLM call
       // (and tokens) when nothing is selected, instead of sending an empty input.
-      // inputData.text carries the HTML for selection_html, which now always has
-      // content for a real selection (the content script falls back to the plain
-      // text), so this only fires when nothing is genuinely selected.
-      const usesSelection =
-        !workflow.recipe ||
-        workflow.recipe.input === "selection_html" ||
-        workflow.recipe.input === "selection_plain";
+      // collectInputData() treats everything except page_text/manual_input as a
+      // selection (legacy/unknown inputs fall back to plain selection), so the
+      // guard mirrors that. inputData.text carries the HTML for selection_html,
+      // which always has content for a real selection (the content script falls
+      // back to the plain text), so this only fires when nothing is selected.
+      const input = workflow.recipe?.input;
+      const usesSelection = input !== "page_text" && input !== "manual_input";
       if (usesSelection && !inputData.text?.trim()) {
         setError("Select some text on the page first, then run this action.");
         return;

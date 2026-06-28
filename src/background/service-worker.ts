@@ -168,7 +168,17 @@ async function handleHotkeyExecution(workflowSlug: string, tab?: chrome.tabs.Tab
     return;
   }
 
-  if (!inputText) return;
+  // Nothing selected: give the same feedback as the side panel instead of
+  // silently doing nothing.
+  if (!inputText.trim()) {
+    await sendToTab(tab.id, {
+      type: "SHOW_TOAST",
+      text: "Select some text first, then run this action.",
+      variant: "error",
+      duration: 3000,
+    } as ExtensionMessage).catch(() => {});
+    return;
+  }
 
   // Show processing toast
   await sendToTab(tab.id, {
