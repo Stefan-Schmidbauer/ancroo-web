@@ -93,6 +93,12 @@ export async function importBackup(file: File): Promise<{ actions: number; provi
     throw new Error("Invalid JSON file");
   }
 
+  // Backups exported before v1.6.0 stored the array under "workflows".
+  if (parsed && typeof parsed === "object") {
+    const p = parsed as Record<string, unknown>;
+    if (!("actions" in p) && Array.isArray(p.workflows)) p.actions = p.workflows;
+  }
+
   if (!validateBackup(parsed)) {
     throw new Error("Not a valid Ancroo backup file");
   }

@@ -3,11 +3,26 @@
 import type { LocalAction, CollectionRecipe } from "./types";
 
 const STORAGE_KEY = "localActions";
+/** Pre-v1.6.0 storage key. Up to v1.4.2 (live on the Web Store) actions were
+ *  stored here; carried over to STORAGE_KEY once, on first read after update. */
+const LEGACY_STORAGE_KEY = "localWorkflows";
 
 /** List all local actions. */
 export async function listLocalActions(): Promise<LocalAction[]> {
-  const stored = await chrome.storage.local.get(STORAGE_KEY);
-  return (stored[STORAGE_KEY] as LocalAction[] | undefined) ?? [];
+  const stored = await chrome.storage.local.get([STORAGE_KEY, LEGACY_STORAGE_KEY]);
+  if (stored[STORAGE_KEY]) return stored[STORAGE_KEY] as LocalAction[];
+
+  // One-time migration from the renamed key. Updating users keep their custom
+  // actions; derived state (hotkey bindings) self-heals on the next refresh,
+  // since bindings are rebuilt from these actions. The unused `action_type`
+  // field rename needs no migration — it is written but never read.
+  const legacy = stored[LEGACY_STORAGE_KEY] as LocalAction[] | undefined;
+  if (legacy?.length) {
+    await chrome.storage.local.set({ [STORAGE_KEY]: legacy });
+    await chrome.storage.local.remove(LEGACY_STORAGE_KEY);
+    return legacy;
+  }
+  return [];
 }
 
 /** Get a single local action by slug. */

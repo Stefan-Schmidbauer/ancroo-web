@@ -219,7 +219,20 @@ export function App() {
       ]);
 
       setActions(actionList);
-      setHistory((stored.history as HistoryEntry[] | undefined) ?? []);
+      // Pre-v1.6.0 history entries used `workflow_slug`/`workflow_name`. Map the
+      // old field names so existing entries still render a title after update.
+      const rawHistory =
+        (stored.history as (HistoryEntry & {
+          workflow_slug?: string;
+          workflow_name?: string;
+        })[]) ?? [];
+      setHistory(
+        rawHistory.map((e) => ({
+          ...e,
+          action_slug: e.action_slug ?? e.workflow_slug ?? "",
+          action_name: e.action_name ?? e.workflow_name ?? "",
+        })),
+      );
 
       // Refresh hotkey bindings for the content script + panel keydown listener.
       chrome.runtime.sendMessage({ type: "REFRESH_HOTKEYS" }).catch(() => {});
