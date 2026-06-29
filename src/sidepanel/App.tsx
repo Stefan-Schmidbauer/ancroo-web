@@ -322,12 +322,11 @@ export function App() {
         // focus. So write through the content script, which runs in the focused
         // page and has an execCommand fallback. Fall back to a direct panel write
         // (restricted pages without a content script), then to showing the result.
-        let ok = false;
         const res = await sendToTab<WriteClipboardResultMessage>(tabId, {
           type: "WRITE_CLIPBOARD",
           text: resultText,
         }).catch(() => null);
-        ok = res?.success ?? false;
+        let ok = res?.success ?? false;
         if (!ok) {
           try {
             await navigator.clipboard.writeText(resultText);
