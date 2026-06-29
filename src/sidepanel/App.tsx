@@ -47,6 +47,11 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [executing, setExecuting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Transient inline banner (e.g. "select some text first"). Unlike `error`, it
+  // does not replace the whole panel — it shows above the workflow list and
+  // auto-dismisses.
+  const [notice, setNotice] = useState<string | null>(null);
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Manual input state
   const [pendingWorkflow, setPendingWorkflow] = useState<Workflow | null>(null);
@@ -78,6 +83,13 @@ export function App() {
       else next.add(cat);
       return next;
     });
+
+  // Show a transient, non-destructive notice (auto-dismisses after 4s).
+  function showNotice(message: string) {
+    setNotice(message);
+    clearTimeout(noticeTimerRef.current);
+    noticeTimerRef.current = setTimeout(() => setNotice(null), 4000);
+  }
 
   useEffect(() => {
     init();
@@ -203,7 +215,11 @@ export function App() {
       if (session.pendingWorkflowTrigger) {
         const trigger = session.pendingWorkflowTrigger as { slug: string; nonce: number };
         await chrome.storage.session.remove("pendingWorkflowTrigger");
-        if (trigger.nonce !== lastTriggerNonceRef.current) {
+        // nonce is the press timestamp. Ignore a stale trigger that was never
+        // consumed (e.g. sidePanel.open() failed) so it can't fire on a later
+        // manual open; a real trigger is read within ms of the panel opening.
+        const isFresh = Date.now() - trigger.nonce < 5000;
+        if (isFresh && trigger.nonce !== lastTriggerNonceRef.current) {
           lastTriggerNonceRef.current = trigger.nonce;
           const target = workflowList.find((w) => w.slug === trigger.slug);
           if (target) {
@@ -351,6 +367,9 @@ export function App() {
 
   async function executeTextWorkflow(workflow: Workflow) {
     setExecuting(workflow.slug);
+    // Tab carrying a lingering "processing" toast, so a thrown error can clear
+    // it (success/normal paths replace or hide it themselves).
+    let processingToastTabId: number | null = null;
     try {
       const [tab] = await chrome.tabs.query({
         active: true,
@@ -366,7 +385,7 @@ export function App() {
           tabUrl.startsWith("chrome-extension://") ||
           tabUrl.startsWith("about:"))
       ) {
-        setError("Cannot run actions on this page. Please switch to a regular website tab.");
+        showNotice("Cannot run actions on this page. Switch to a regular website tab.");
         return;
       }
 
@@ -392,8 +411,31 @@ export function App() {
       const input = workflow.recipe?.input;
       const usesSelection = input !== "page_text" && input !== "manual_input";
       if (usesSelection && !inputData.text?.trim()) {
-        setError("Select some text on the page first, then run this action.");
+        // Non-destructive feedback: a page toast (visible where the user just
+        // pressed the hotkey) plus an inline notice, instead of replacing the
+        // whole panel with a full-screen error.
+        await sendToTab(tab.id, {
+          type: "SHOW_TOAST",
+          text: "Select some text first, then run this action.",
+          variant: "error",
+          duration: 3000,
+        } as ExtensionMessage).catch(() => {});
+        showNotice("Select some text on the page first, then run this action.");
         return;
+      }
+
+      // Show a processing toast on the page for page-targeted runs, so there is
+      // on-page feedback during the LLM call (esp. when the panel just opened
+      // from a hotkey). applyAction's success/error toast replaces it; the
+      // side-panel-only and failure paths clear it explicitly below.
+      const showsPageToast = !isManualInput;
+      if (showsPageToast) {
+        processingToastTabId = tab.id;
+        await sendToTab(tab.id, {
+          type: "SHOW_TOAST",
+          text: `${workflow.name}...`,
+          variant: "processing",
+        } as ExtensionMessage).catch(() => {});
       }
 
       const result = await executeWorkflowUnified(workflow, inputData);
@@ -423,6 +465,11 @@ export function App() {
           action !== "clipboard" &&
           action !== "copy_to_clipboard"
         ) {
+          // Result is shown in the panel; applyAction won't show a page toast
+          // for this action, so clear the processing toast.
+          if (showsPageToast) {
+            await sendToTab(tab.id, { type: "HIDE_TOAST" } as ExtensionMessage).catch(() => {});
+          }
           setResultText(result.result.text);
           setResultWorkflowName(workflow.name);
           setResultWorkflow(workflow);
@@ -432,12 +479,23 @@ export function App() {
 
         await applyAction(action, result.result.text, tab.id);
       } else if (result.result && !result.result.success) {
+        if (showsPageToast) {
+          await sendToTab(tab.id, { type: "HIDE_TOAST" } as ExtensionMessage).catch(() => {});
+        }
         setError(result.result.error ?? `${workflow.name} failed`);
       } else if (result.result?.success && !result.result.text) {
+        if (showsPageToast) {
+          await sendToTab(tab.id, { type: "HIDE_TOAST" } as ExtensionMessage).catch(() => {});
+        }
         setError(`${workflow.name}: no output returned. Check your selection.`);
       }
     } catch (err) {
       console.error("Execution failed:", err);
+      if (processingToastTabId !== null) {
+        await sendToTab(processingToastTabId, { type: "HIDE_TOAST" } as ExtensionMessage).catch(
+          () => {},
+        );
+      }
       setError(friendlyError(err instanceof Error ? err.message : String(err)));
     } finally {
       setExecuting(null);
@@ -680,6 +738,19 @@ export function App() {
           </button>
         </div>
       </div>
+
+      {notice && (
+        <div class="flex items-center justify-between gap-2 px-3 py-2 bg-amber-50 border-b border-amber-200 text-xs text-amber-800">
+          <span>{notice}</span>
+          <button
+            onClick={() => setNotice(null)}
+            class="text-amber-500 hover:text-amber-700"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Workflows */}
       <div class="flex-1 overflow-y-auto p-3">
