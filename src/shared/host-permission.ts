@@ -30,3 +30,21 @@ export async function ensureHostPermission(url: string): Promise<boolean> {
   // request() call fail ("must be called during a user gesture").
   return chrome.permissions.request({ origins: [pattern] });
 }
+
+/** Request host permissions for a batch of URLs in a single prompt.
+ *  Origins already covered by the manifest or a prior grant are included
+ *  harmlessly — Chrome only prompts for the ones still missing. Returns true
+ *  if every requested origin ends up granted (or there was nothing to ask for).
+ *
+ *  Must be called within a user gesture (see ensureHostPermission). */
+export async function ensureHostPermissions(urls: string[]): Promise<boolean> {
+  const origins = [...new Set(urls.filter(Boolean).map(toOriginPattern))];
+  if (origins.length === 0) return true;
+  return chrome.permissions.request({ origins });
+}
+
+/** True if the extension may reach this URL — either granted at runtime or
+ *  covered by the manifest's static host_permissions. */
+export async function hasHostPermission(url: string): Promise<boolean> {
+  return chrome.permissions.contains({ origins: [toOriginPattern(url)] });
+}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "preact/hooks";
 import { getSettings, saveSettings, type LLMProviderConfig } from "@/shared/settings";
 import { importBackup } from "@/shared/backup";
+import { ensureHostPermissions } from "@/shared/host-permission";
 import { listLocalWorkflows, seedStarterWorkflows } from "@/shared/local-workflows";
 import { ProviderSettings } from "./ProviderSettings";
 
@@ -45,6 +46,18 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
       const result = await importBackup(file);
       const settings = await getSettings();
       setProviders(settings.llm_providers);
+      // Grant host access for custom-URL providers (Ollama on LAN,
+      // OpenAI-compatible, …) now, while the file-picker user gesture is still
+      // active, so imported providers work on the first run instead of failing
+      // for lack of permission. Best-effort: if the gesture has expired the
+      // grant can still happen later by re-saving the provider in settings.
+      try {
+        await ensureHostPermissions(
+          settings.llm_providers.map((p) => p.base_url).filter((u): u is string => !!u),
+        );
+      } catch {
+        // Ignore — execution surfaces a clear hint if a grant is still missing.
+      }
       importedRef.current = true;
       setHasWorkflows(result.workflows > 0);
       setError(null);

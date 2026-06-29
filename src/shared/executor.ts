@@ -5,6 +5,7 @@ import { getSettings } from "./settings";
 import { getLocalWorkflow } from "./local-workflows";
 import { renderTemplate } from "./template-renderer";
 import { callLLM } from "./llm";
+import { hasHostPermission } from "./host-permission";
 
 /** Timeout for direct LLM calls (60 seconds). */
 const DIRECT_LLM_TIMEOUT_MS = 60_000;
@@ -39,6 +40,29 @@ export async function executeWorkflowUnified(
       start,
       `LLM provider "${local.provider_id}" not configured. Check your settings.`,
     );
+  }
+
+  // A custom base_url (Ollama on LAN, OpenAI-compatible, custom endpoint) needs
+  // an optional host permission that the manifest doesn't cover. Granting it
+  // normally happens when the provider is saved in Settings — but a restored
+  // backup writes providers straight to storage without that step. Detect the
+  // gap here so the user gets an actionable message instead of a misleading
+  // "invalid API key" / network failure on the first run.
+  if (provider.base_url) {
+    const allowed = await hasHostPermission(provider.base_url);
+    if (!allowed) {
+      let host = provider.base_url;
+      try {
+        host = new URL(provider.base_url).host;
+      } catch {
+        // Keep the raw base_url if it isn't a parseable URL.
+      }
+      return errorResult(
+        executionId,
+        start,
+        `The extension isn't allowed to reach ${host} yet. Open Settings, edit the "${provider.name}" provider, and use Test or Save to grant access.`,
+      );
+    }
   }
 
   try {
