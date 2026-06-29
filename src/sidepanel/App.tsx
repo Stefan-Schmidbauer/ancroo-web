@@ -1,9 +1,16 @@
-import { useState, useEffect } from "preact/hooks";
+import { useState, useEffect, useRef } from "preact/hooks";
 import { getSettings } from "@/shared/settings";
 import { isSetupComplete } from "@/shared/settings";
 import { executeWorkflowUnified } from "@/shared/executor";
 import { listWorkflowsUnified } from "@/shared/workflow-provider";
-import type { Workflow, HistoryEntry, CollectionRecipe, InputDataPacket } from "@/shared/types";
+import { matchesEvent, HOTKEY_STORAGE_KEY } from "@/shared/hotkeys";
+import type {
+  Workflow,
+  HistoryEntry,
+  CollectionRecipe,
+  InputDataPacket,
+  HotkeyBinding,
+} from "@/shared/types";
 import type {
   ExtensionMessage,
   SelectionResultMessage,
@@ -76,25 +83,90 @@ export function App() {
     init();
   }, []);
 
-  // Sync history when background script adds entries (hotkey-triggered workflows)
+  // The side panel is the single workflow orchestrator. Long-lived listeners
+  // (storage + keydown) are registered once with empty deps, so they read the
+  // latest workflows / execute handler through refs instead of stale closures.
+  const workflowsRef = useRef<Workflow[]>([]);
+  const handleExecuteRef = useRef<(w: Workflow) => void>(() => {});
+  const hotkeyBindingsRef = useRef<HotkeyBinding[]>([]);
+  // Last hotkey trigger we ran, to avoid handling the same queued trigger twice
+  // (load() on mount vs. the storage.onChanged listener).
+  const lastTriggerNonceRef = useRef<number | null>(null);
+  useEffect(() => {
+    workflowsRef.current = workflows;
+    handleExecuteRef.current = handleExecute;
+  });
+
+  // Route a queued hotkey to the orchestrator (handleExecute shows the manual
+  // input UI when needed, otherwise runs the workflow).
+  const runWorkflowSlug = useRef((slug: string) => {
+    const wf = workflowsRef.current.find((w) => w.slug === slug);
+    if (wf) void handleExecuteRef.current(wf);
+  }).current;
+
+  // Sync history when background script adds entries, and pick up hotkey
+  // triggers queued by the background while the panel was already open.
   useEffect(() => {
     const listener = (changes: { [key: string]: chrome.storage.StorageChange }, area: string) => {
       if (area === "local" && changes.history) {
         setHistory((changes.history.newValue as HistoryEntry[] | undefined) ?? []);
       }
-      // An already-open panel must also react to results the background computed
-      // for hotkey-triggered workflows. loadData() reads pendingResult only once
-      // on mount, so without this the result never appears when the panel was
-      // already open (the background's sidePanel.open() is then a no-op).
-      if (area === "session" && changes.pendingResult?.newValue) {
-        const pending = changes.pendingResult.newValue as { text: string; workflowName: string };
-        void chrome.storage.session.remove("pendingResult");
-        setResultText(pending.text);
-        setResultWorkflowName(pending.workflowName);
+      // A page-focus hotkey pressed while the panel is already open reaches us
+      // here: the background queues the workflow (sidePanel.open() is then a
+      // no-op). loadData() only reads the trigger once on mount, so the
+      // already-open case must react to the storage change.
+      if (area === "session" && changes.pendingWorkflowTrigger?.newValue) {
+        const trigger = changes.pendingWorkflowTrigger.newValue as { slug: string; nonce: number };
+        void chrome.storage.session.remove("pendingWorkflowTrigger");
+        if (trigger.nonce !== lastTriggerNonceRef.current) {
+          lastTriggerNonceRef.current = trigger.nonce;
+          runWorkflowSlug(trigger.slug);
+        }
       }
     };
     chrome.storage.onChanged.addListener(listener);
     return () => chrome.storage.onChanged.removeListener(listener);
+  }, []);
+
+  // Trigger B — capture hotkeys while the side panel itself holds keyboard
+  // focus (the content script only sees presses while the page has focus, so
+  // without this those presses would go nowhere). Mirrors the content script.
+  useEffect(() => {
+    chrome.storage.session
+      .get(HOTKEY_STORAGE_KEY)
+      .then((data) => {
+        hotkeyBindingsRef.current = (data[HOTKEY_STORAGE_KEY] as HotkeyBinding[] | undefined) ?? [];
+      })
+      .catch(() => {});
+
+    const onBindingsChanged = (
+      changes: { [key: string]: chrome.storage.StorageChange },
+      area: string,
+    ) => {
+      if (area === "session" && changes[HOTKEY_STORAGE_KEY]) {
+        hotkeyBindingsRef.current =
+          (changes[HOTKEY_STORAGE_KEY].newValue as HotkeyBinding[] | undefined) ?? [];
+      }
+    };
+    chrome.storage.onChanged.addListener(onBindingsChanged);
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.ctrlKey && !event.metaKey && !event.altKey) return;
+      for (const binding of hotkeyBindingsRef.current) {
+        if (matchesEvent(event, binding.parsed)) {
+          event.preventDefault();
+          event.stopPropagation();
+          runWorkflowSlug(binding.workflow_slug);
+          return;
+        }
+      }
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+
+    return () => {
+      chrome.storage.onChanged.removeListener(onBindingsChanged);
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
   }, []);
 
   async function init() {
@@ -117,31 +189,27 @@ export function App() {
       const [workflowList, stored, session] = await Promise.all([
         listWorkflowsUnified(),
         chrome.storage.local.get("history"),
-        chrome.storage.session.get(["pendingWorkflowSlug", "pendingResult"]),
+        chrome.storage.session.get("pendingWorkflowTrigger"),
       ]);
 
       setWorkflows(workflowList);
       setHistory((stored.history as HistoryEntry[] | undefined) ?? []);
 
-      // Cache workflows for background hotkey execution and refresh bindings
-      await chrome.storage.session.set({ cachedWorkflows: workflowList });
+      // Refresh hotkey bindings for the content script + panel keydown listener.
       chrome.runtime.sendMessage({ type: "REFRESH_HOTKEYS" }).catch(() => {});
 
-      // Check if a complex workflow was triggered via hotkey (needs side panel collection)
-      if (session.pendingWorkflowSlug) {
-        await chrome.storage.session.remove("pendingWorkflowSlug");
-        const target = workflowList.find((w) => w.slug === session.pendingWorkflowSlug);
-        if (target) {
-          setTimeout(() => handleExecute(target), 0);
+      // A hotkey pressed while the panel was closed queued a trigger that we
+      // pick up here on mount. Defer so component state is settled first.
+      if (session.pendingWorkflowTrigger) {
+        const trigger = session.pendingWorkflowTrigger as { slug: string; nonce: number };
+        await chrome.storage.session.remove("pendingWorkflowTrigger");
+        if (trigger.nonce !== lastTriggerNonceRef.current) {
+          lastTriggerNonceRef.current = trigger.nonce;
+          const target = workflowList.find((w) => w.slug === trigger.slug);
+          if (target) {
+            setTimeout(() => handleExecute(target), 0);
+          }
         }
-      }
-
-      // Check if background executed a workflow and has a result to display
-      if (session.pendingResult) {
-        await chrome.storage.session.remove("pendingResult");
-        const pending = session.pendingResult as { text: string; workflowName: string };
-        setResultText(pending.text);
-        setResultWorkflowName(pending.workflowName);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to load";

@@ -116,6 +116,4 @@ export interface ParsedHotkey {
 export interface HotkeyBinding {
   parsed: ParsedHotkey;
   workflow_slug: string;
-  /** True when the workflow output needs the side panel (e.g. side_panel_only). */
-  needsSidePanel: boolean;
 }

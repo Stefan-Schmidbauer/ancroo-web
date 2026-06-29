@@ -1,4 +1,4 @@
-import type { ParsedHotkey, HotkeyBinding, HotkeyMapping, Workflow } from "./types";
+import type { ParsedHotkey, HotkeyBinding, HotkeyMapping } from "./types";
 
 /** Storage key for hotkey bindings in chrome.storage.session. */
 export const HOTKEY_STORAGE_KEY = "hotkeyBindings";
@@ -30,16 +30,8 @@ export function parseHotkey(hotkeyStr: string): ParsedHotkey | null {
 /**
  * Convert server hotkey mappings into parsed bindings for the content script.
  * Filters out disabled hotkeys and those without a hotkey string.
- *
- * When a workflow list is provided, each binding includes a `needsSidePanel`
- * flag so the background can open the side panel synchronously (preserving the
- * user-gesture context required by `chrome.sidePanel.open()`).
  */
-export function buildHotkeyBindings(
-  mappings: HotkeyMapping[],
-  workflows?: Workflow[],
-): HotkeyBinding[] {
-  const workflowMap = new Map(workflows?.map((w) => [w.slug, w]));
+export function buildHotkeyBindings(mappings: HotkeyMapping[]): HotkeyBinding[] {
   const bindings: HotkeyBinding[] = [];
 
   for (const mapping of mappings) {
@@ -48,11 +40,7 @@ export function buildHotkeyBindings(
     const parsed = parseHotkey(mapping.hotkey);
     if (!parsed) continue;
 
-    const workflow = workflowMap.get(mapping.workflow_slug);
-    // Manual entry is the only input that needs the side panel UI to collect input.
-    const needsSidePanel = workflow?.recipe?.input === "manual_input";
-
-    bindings.push({ parsed, workflow_slug: mapping.workflow_slug, needsSidePanel });
+    bindings.push({ parsed, workflow_slug: mapping.workflow_slug });
   }
 
   return bindings;

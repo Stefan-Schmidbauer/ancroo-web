@@ -46,8 +46,6 @@ export interface InsertResultMessage {
 export interface ExecuteHotkeyWorkflowMessage {
   type: "EXECUTE_HOTKEY_WORKFLOW";
   workflowSlug: string;
-  /** Hint from the content script so background can open the side panel synchronously. */
-  needsSidePanel: boolean;
 }
 
 export interface ShowToastMessage {

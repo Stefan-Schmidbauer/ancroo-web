@@ -93,7 +93,6 @@ function hotkeyHandler(event: KeyboardEvent): void {
         chrome.runtime.sendMessage({
           type: "EXECUTE_HOTKEY_WORKFLOW",
           workflowSlug: binding.workflow_slug,
-          needsSidePanel: binding.needsSidePanel,
         });
       } catch {
         // "Extension context invalidated" — this content script is orphaned
