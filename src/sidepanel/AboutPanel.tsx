@@ -69,6 +69,25 @@ export function AboutPanel({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
+        <div class="bg-white rounded-lg border divide-y overflow-hidden">
+          <a
+            href="https://chromewebstore.google.com/detail/ancroo/jeaaomlligaaoohplachpimjgopjmfim/reviews"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex items-center justify-between px-3 py-2.5 hover:bg-gray-50"
+          >
+            <span class="text-sm text-gray-900">Rate on Chrome Web Store</span>
+            <span class="text-sm text-yellow-500">★</span>
+          </a>
+          <a
+            href="mailto:support@ancroo.com"
+            class="flex items-center justify-between px-3 py-2.5 hover:bg-gray-50"
+          >
+            <span class="text-sm text-gray-900">Send Feedback</span>
+            <span class="text-sm text-blue-600">✉</span>
+          </a>
+        </div>
+
         <p class="text-xs text-gray-400 text-center">
           Built with the help of AI (Claude by Anthropic)
         </p>
