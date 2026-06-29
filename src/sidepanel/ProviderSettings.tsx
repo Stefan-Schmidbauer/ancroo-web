@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "preact/hooks";
 import type { LLMProviderConfig, LLMProviderType } from "@/shared/settings";
 import { ensureHostPermission } from "@/shared/host-permission";
-import { listLocalWorkflows } from "@/shared/local-workflows";
+import { listLocalActions } from "@/shared/local-actions";
 import { fetchModels, type ModelInfo } from "@/shared/llm/models";
 import { probeModel } from "@/shared/llm";
 
@@ -145,8 +145,8 @@ export function ProviderSettings({ providers, onSave }: Props) {
   }
 
   async function startDelete(id: string, name: string) {
-    const workflows = await listLocalWorkflows();
-    const count = workflows.filter((w) => w.provider_id === id).length;
+    const actions = await listLocalActions();
+    const count = actions.filter((w) => w.provider_id === id).length;
     if (count === 0) {
       onSave(providers.filter((p) => p.id !== id));
     } else {
@@ -488,10 +488,20 @@ export function ProviderSettings({ providers, onSave }: Props) {
           )}
         </div>
 
-        {/* Step 3 — save, enabled once the connection is verified and a model chosen. */}
+        {/* Step 3 — save, enabled once the connection is verified, a model chosen,
+            and its probe has finished successfully. Block while a probe is in
+            flight (wait for the reply) and when the last probe failed. The manual
+            openai-compatible path never probes (probeResult stays null), so it
+            isn't affected. */}
         <button
           onClick={handleSaveProvider}
-          disabled={baseInvalid || !credsVerified || !editing.model?.trim()}
+          disabled={
+            baseInvalid ||
+            !credsVerified ||
+            !editing.model?.trim() ||
+            probing ||
+            probeResult?.ok === false
+          }
           class="w-full bg-blue-600 text-white text-sm py-1.5 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
         >
           Save
@@ -539,31 +549,33 @@ export function ProviderSettings({ providers, onSave }: Props) {
 
       {providers.length === 0 && <p class="text-xs text-gray-400">No providers configured yet.</p>}
 
-      {providers.map((p) => (
-        <div key={p.id} class="flex items-center justify-between p-2 bg-white rounded-lg border">
-          <div>
-            <div class="text-sm font-medium">{p.name}</div>
-            <div class="text-xs text-gray-400">
-              {p.type} — {p.base_url || DEFAULT_BASE_URLS[p.type] || "custom"} — ****
-              {p.api_key.slice(-4)}
+      {[...providers]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((p) => (
+          <div key={p.id} class="flex items-center justify-between p-2 bg-white rounded-lg border">
+            <div>
+              <div class="text-sm font-medium">{p.name}</div>
+              <div class="text-xs text-gray-400">
+                {p.type} — {p.base_url || DEFAULT_BASE_URLS[p.type] || "custom"} — ****
+                {p.api_key.slice(-4)}
+              </div>
+            </div>
+            <div class="flex gap-1">
+              <button
+                onClick={() => startEdit(p)}
+                class="text-xs text-blue-500 hover:text-blue-700 px-1"
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => startDelete(p.id, p.name)}
+                class="text-xs text-red-400 hover:text-red-600 px-1"
+              >
+                Delete
+              </button>
             </div>
           </div>
-          <div class="flex gap-1">
-            <button
-              onClick={() => startEdit(p)}
-              class="text-xs text-blue-500 hover:text-blue-700 px-1"
-            >
-              Edit
-            </button>
-            <button
-              onClick={() => startDelete(p.id, p.name)}
-              class="text-xs text-red-400 hover:text-red-600 px-1"
-            >
-              Delete
-            </button>
-          </div>
-        </div>
-      ))}
+        ))}
 
       <button
         onClick={startAdd}

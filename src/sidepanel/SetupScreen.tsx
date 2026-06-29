@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "preact/hooks";
 import { getSettings, saveSettings, type LLMProviderConfig } from "@/shared/settings";
 import { importBackup } from "@/shared/backup";
 import { ensureHostPermissions } from "@/shared/host-permission";
-import { listLocalWorkflows, seedStarterWorkflows } from "@/shared/local-workflows";
+import { listLocalActions, seedStarterActions } from "@/shared/local-actions";
 import { ProviderSettings } from "./ProviderSettings";
 
 /** Setup screen — LLM provider configuration. */
@@ -10,9 +10,9 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
   const [providers, setProviders] = useState<LLMProviderConfig[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [importStatus, setImportStatus] = useState<{ msg: string; ok: boolean } | null>(null);
-  // Whether workflows already exist (e.g. restored from a backup). When they do,
+  // Whether actions already exist (e.g. restored from a backup). When they do,
   // no starter actions get seeded.
-  const [hasWorkflows, setHasWorkflows] = useState(false);
+  const [hasActions, setHasActions] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Set once an import has resolved, so a late-resolving mount read can't
   // clobber the imported value back to its (pre-import) snapshot.
@@ -23,8 +23,8 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
     getSettings().then((s) => {
       if (!cancelled) setProviders(s.llm_providers);
     });
-    listLocalWorkflows().then((w) => {
-      if (!cancelled && !importedRef.current) setHasWorkflows(w.length > 0);
+    listLocalActions().then((w) => {
+      if (!cancelled && !importedRef.current) setHasActions(w.length > 0);
     });
     return () => {
       cancelled = true;
@@ -59,10 +59,10 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
         // Ignore — execution surfaces a clear hint if a grant is still missing.
       }
       importedRef.current = true;
-      setHasWorkflows(result.workflows > 0);
+      setHasActions(result.actions > 0);
       setError(null);
       setImportStatus({
-        msg: `Imported ${result.workflows} action${result.workflows !== 1 ? "s" : ""}, ${result.providers} provider${result.providers !== 1 ? "s" : ""}.`,
+        msg: `Imported ${result.actions} action${result.actions !== 1 ? "s" : ""}, ${result.providers} provider${result.providers !== 1 ? "s" : ""}.`,
         ok: true,
       });
     } catch (e) {
@@ -79,14 +79,14 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
     const current = await getSettings();
     await saveSettings({ ...current, llm_providers: providers });
 
-    // Seed starter workflows with the first provider's default model — but only
+    // Seed starter actions with the first provider's default model — but only
     // when none exist yet, so an imported backup keeps its own actions untouched.
-    if (!hasWorkflows) {
+    if (!hasActions) {
       const first = providers[0];
       // Providers can only be saved with an explicitly chosen model, so use it
       // directly — no hard-coded fallback model.
       const model = first.model?.trim() || "";
-      await seedStarterWorkflows(first.id, model);
+      await seedStarterActions(first.id, model);
     }
 
     onComplete();
@@ -97,7 +97,7 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
       <h1 class="text-lg font-bold mb-1">Ancroo Setup</h1>
       <p class="text-xs text-gray-500 mb-3">
         Add at least one LLM provider to get started.
-        {!hasWorkflows && " Starter actions will be created automatically."}
+        {!hasActions && " Starter actions will be created automatically."}
       </p>
 
       <div class="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">

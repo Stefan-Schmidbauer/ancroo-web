@@ -1,36 +1,32 @@
 import { useState, useEffect, useRef } from "preact/hooks";
 import { getSettings } from "@/shared/settings";
 import { isSetupComplete } from "@/shared/settings";
-import { executeWorkflowUnified } from "@/shared/executor";
-import { listWorkflowsUnified } from "@/shared/workflow-provider";
+import { executeActionUnified } from "@/shared/executor";
+import { listActionsUnified } from "@/shared/action-provider";
 import { matchesEvent, HOTKEY_STORAGE_KEY } from "@/shared/hotkeys";
 import type {
-  Workflow,
+  Action,
   HistoryEntry,
   CollectionRecipe,
   InputDataPacket,
   HotkeyBinding,
 } from "@/shared/types";
 import type {
-  ExtensionMessage,
   SelectionResultMessage,
   PageTextResultMessage,
   InsertResultMessage,
+  WriteClipboardResultMessage,
 } from "@/shared/messages";
 import { sendToTab } from "@/shared/tab-messaging";
 import { needsManualInput, friendlyError, categoryIcon } from "./utils";
 import { HistoryItem } from "./HistoryItem";
 import { SetupScreen } from "./SetupScreen";
 import { AboutPanel } from "./AboutPanel";
-import { WorkflowEditor } from "./WorkflowEditor";
+import { ActionEditor } from "./ActionEditor";
 import { Settings } from "./Settings";
-import type { LocalWorkflow } from "@/shared/types";
+import type { LocalAction } from "@/shared/types";
 import type { LLMProviderConfig } from "@/shared/settings";
-import {
-  listLocalWorkflows,
-  saveLocalWorkflow,
-  deleteLocalWorkflow,
-} from "@/shared/local-workflows";
+import { listLocalActions, saveLocalAction, deleteLocalAction } from "@/shared/local-actions";
 import {
   listCategories,
   saveCategory,
@@ -39,29 +35,33 @@ import {
 } from "@/shared/local-categories";
 import type { Category } from "@/shared/local-categories";
 import { CategoryManager } from "./CategoryManager";
+import { Toast } from "./Toast";
+import type { ToastState, ToastVariant } from "./Toast";
 
 export function App() {
   const [setupDone, setSetupDone] = useState<boolean | null>(null);
-  const [workflows, setWorkflows] = useState<Workflow[]>([]);
+  const [actions, setActions] = useState<Action[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [executing, setExecuting] = useState<string | null>(null);
+  // Full-screen takeover, reserved for a fatal initial-load failure where there
+  // is no panel content to show (storage unreachable). Runtime feedback during
+  // use goes through the toast below, not here.
   const [error, setError] = useState<string | null>(null);
-  // Transient inline banner (e.g. "select some text first"). Unlike `error`, it
-  // does not replace the whole panel — it shows above the workflow list and
-  // auto-dismisses.
-  const [notice, setNotice] = useState<string | null>(null);
-  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // The single in-panel feedback channel (processing/success/warning/error).
+  // See Toast.tsx for why this replaced the page-toast + notice + full-screen mix.
+  const [toast, setToast] = useState<ToastState | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Manual input state
-  const [pendingWorkflow, setPendingWorkflow] = useState<Workflow | null>(null);
+  const [pendingAction, setPendingAction] = useState<Action | null>(null);
   const [manualInputText, setManualInputText] = useState("");
 
   // About panel state
   const [showAbout, setShowAbout] = useState(false);
 
   // Settings / editor state
-  const [editingWorkflow, setEditingWorkflow] = useState<LocalWorkflow | null | "new">(null);
+  const [editingAction, setEditingAction] = useState<LocalAction | null | "new">(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [llmProviders, setLlmProviders] = useState<LLMProviderConfig[]>([]);
@@ -69,8 +69,8 @@ export function App() {
 
   // Result display state
   const [resultText, setResultText] = useState<string | null>(null);
-  const [resultWorkflowName, setResultWorkflowName] = useState<string>("");
-  const [resultWorkflow, setResultWorkflow] = useState<Workflow | null>(null);
+  const [resultActionName, setResultActionName] = useState<string>("");
+  const [resultAction, setResultAction] = useState<Action | null>(null);
   const [copied, setCopied] = useState(false);
 
   // Collapsed categories
@@ -84,35 +84,49 @@ export function App() {
       return next;
     });
 
-  // Show a transient, non-destructive notice (auto-dismisses after 4s).
-  function showNotice(message: string) {
-    setNotice(message);
-    clearTimeout(noticeTimerRef.current);
-    noticeTimerRef.current = setTimeout(() => setNotice(null), 4000);
+  // Show in-panel feedback. Transient variants auto-dismiss; `error` and
+  // `processing` stay until explicitly replaced/hidden (errors are dismissible
+  // via the ✕ in the toast, processing is cleared when its run resolves).
+  function showToast(text: string, variant: ToastVariant = "warning") {
+    setToast({ text, variant });
+    clearTimeout(toastTimerRef.current);
+    if (variant !== "error" && variant !== "processing") {
+      const ms = variant === "success" ? 2500 : 4000;
+      toastTimerRef.current = setTimeout(() => setToast(null), ms);
+    }
+  }
+
+  function hideToast() {
+    clearTimeout(toastTimerRef.current);
+    setToast(null);
   }
 
   useEffect(() => {
     init();
   }, []);
 
-  // The side panel is the single workflow orchestrator. Long-lived listeners
+  // The side panel is the single action orchestrator. Long-lived listeners
   // (storage + keydown) are registered once with empty deps, so they read the
-  // latest workflows / execute handler through refs instead of stale closures.
-  const workflowsRef = useRef<Workflow[]>([]);
-  const handleExecuteRef = useRef<(w: Workflow) => void>(() => {});
+  // latest actions / execute handler through refs instead of stale closures.
+  const actionsRef = useRef<Action[]>([]);
+  const handleExecuteRef = useRef<(w: Action) => void>(() => {});
   const hotkeyBindingsRef = useRef<HotkeyBinding[]>([]);
+  // Synchronous in-flight guard. The async `executing` state can't prevent a
+  // second hotkey press in the same tick from starting an overlapping run, so a
+  // ref gives the immediate check that blocks concurrent executions.
+  const executingRef = useRef(false);
   // Last hotkey trigger we ran, to avoid handling the same queued trigger twice
   // (load() on mount vs. the storage.onChanged listener).
   const lastTriggerNonceRef = useRef<number | null>(null);
   useEffect(() => {
-    workflowsRef.current = workflows;
+    actionsRef.current = actions;
     handleExecuteRef.current = handleExecute;
   });
 
   // Route a queued hotkey to the orchestrator (handleExecute shows the manual
-  // input UI when needed, otherwise runs the workflow).
-  const runWorkflowSlug = useRef((slug: string) => {
-    const wf = workflowsRef.current.find((w) => w.slug === slug);
+  // input UI when needed, otherwise runs the action).
+  const runActionSlug = useRef((slug: string) => {
+    const wf = actionsRef.current.find((w) => w.slug === slug);
     if (wf) void handleExecuteRef.current(wf);
   }).current;
 
@@ -124,15 +138,15 @@ export function App() {
         setHistory((changes.history.newValue as HistoryEntry[] | undefined) ?? []);
       }
       // A page-focus hotkey pressed while the panel is already open reaches us
-      // here: the background queues the workflow (sidePanel.open() is then a
+      // here: the background queues the action (sidePanel.open() is then a
       // no-op). loadData() only reads the trigger once on mount, so the
       // already-open case must react to the storage change.
-      if (area === "session" && changes.pendingWorkflowTrigger?.newValue) {
-        const trigger = changes.pendingWorkflowTrigger.newValue as { slug: string; nonce: number };
-        void chrome.storage.session.remove("pendingWorkflowTrigger");
+      if (area === "session" && changes.pendingActionTrigger?.newValue) {
+        const trigger = changes.pendingActionTrigger.newValue as { slug: string; nonce: number };
+        void chrome.storage.session.remove("pendingActionTrigger");
         if (trigger.nonce !== lastTriggerNonceRef.current) {
           lastTriggerNonceRef.current = trigger.nonce;
-          runWorkflowSlug(trigger.slug);
+          runActionSlug(trigger.slug);
         }
       }
     };
@@ -168,7 +182,7 @@ export function App() {
         if (matchesEvent(event, binding.parsed)) {
           event.preventDefault();
           event.stopPropagation();
-          runWorkflowSlug(binding.workflow_slug);
+          runActionSlug(binding.action_slug);
           return;
         }
       }
@@ -198,13 +212,13 @@ export function App() {
       setLlmProviders(settings.llm_providers);
       setCategories(await listCategories());
 
-      const [workflowList, stored, session] = await Promise.all([
-        listWorkflowsUnified(),
+      const [actionList, stored, session] = await Promise.all([
+        listActionsUnified(),
         chrome.storage.local.get("history"),
-        chrome.storage.session.get("pendingWorkflowTrigger"),
+        chrome.storage.session.get("pendingActionTrigger"),
       ]);
 
-      setWorkflows(workflowList);
+      setActions(actionList);
       setHistory((stored.history as HistoryEntry[] | undefined) ?? []);
 
       // Refresh hotkey bindings for the content script + panel keydown listener.
@@ -212,16 +226,16 @@ export function App() {
 
       // A hotkey pressed while the panel was closed queued a trigger that we
       // pick up here on mount. Defer so component state is settled first.
-      if (session.pendingWorkflowTrigger) {
-        const trigger = session.pendingWorkflowTrigger as { slug: string; nonce: number };
-        await chrome.storage.session.remove("pendingWorkflowTrigger");
+      if (session.pendingActionTrigger) {
+        const trigger = session.pendingActionTrigger as { slug: string; nonce: number };
+        await chrome.storage.session.remove("pendingActionTrigger");
         // nonce is the press timestamp. Ignore a stale trigger that was never
         // consumed (e.g. sidePanel.open() failed) so it can't fire on a later
         // manual open; a real trigger is read within ms of the panel opening.
         const isFresh = Date.now() - trigger.nonce < 5000;
         if (isFresh && trigger.nonce !== lastTriggerNonceRef.current) {
           lastTriggerNonceRef.current = trigger.nonce;
-          const target = workflowList.find((w) => w.slug === trigger.slug);
+          const target = actionList.find((w) => w.slug === trigger.slug);
           if (target) {
             setTimeout(() => handleExecute(target), 0);
           }
@@ -239,9 +253,9 @@ export function App() {
   }
 
   async function handleDeleteCategory(value: string) {
-    const all = await listLocalWorkflows();
+    const all = await listLocalActions();
     for (const w of all.filter((w) => w.category === value)) {
-      await saveLocalWorkflow({ ...w, category: null, category_icon: null });
+      await saveLocalAction({ ...w, category: null, category_icon: null });
     }
     await deleteCategory(value);
     setCategories(await listCategories());
@@ -274,7 +288,7 @@ export function App() {
         break;
       }
       // selection_plain plus any unknown/legacy input value (e.g. pre-1.0
-      // workflows still stored in the old `collect` format) fall back to
+      // actions still stored in the old `collect` format) fall back to
       // plain selection text, so they keep working instead of running empty.
       case "selection_plain":
       default: {
@@ -295,27 +309,38 @@ export function App() {
           type: "INSERT_TEXT",
           text: resultText,
         });
-        await sendToTab(tabId, {
-          type: "SHOW_TOAST",
-          text: res?.success ? "Text inserted" : "Could not insert text",
-          variant: res?.success ? "success" : "error",
-          duration: res?.success ? 2000 : 4000,
-        } as ExtensionMessage);
+        showToast(
+          res?.success ? "Text inserted" : "Could not insert text",
+          res?.success ? "success" : "error",
+        );
         break;
       }
       case "clipboard":
       case "copy_to_clipboard": {
-        try {
-          await navigator.clipboard.writeText(resultText);
-          if (tabId) {
-            await sendToTab(tabId, {
-              type: "SHOW_TOAST",
-              text: "Copied to clipboard",
-              variant: "success",
-              duration: 2000,
-            } as ExtensionMessage);
+        // A clipboard write from the side panel fails when the panel isn't the
+        // focused document — exactly the hotkey case, where the page still holds
+        // focus. So write through the content script, which runs in the focused
+        // page and has an execCommand fallback. Fall back to a direct panel write
+        // (restricted pages without a content script), then to showing the result.
+        let ok = false;
+        const res = await sendToTab<WriteClipboardResultMessage>(tabId, {
+          type: "WRITE_CLIPBOARD",
+          text: resultText,
+        }).catch(() => null);
+        ok = res?.success ?? false;
+        if (!ok) {
+          try {
+            await navigator.clipboard.writeText(resultText);
+            ok = true;
+          } catch {
+            ok = false;
           }
-        } catch {
+        }
+        if (ok) {
+          showToast("Copied to clipboard", "success");
+        } else {
+          // Clear the lingering processing toast before falling back to the panel.
+          hideToast();
           setResultText(resultText);
         }
         break;
@@ -325,12 +350,10 @@ export function App() {
           type: "INSERT_BEFORE",
           text: resultText,
         });
-        await sendToTab(tabId, {
-          type: "SHOW_TOAST",
-          text: res?.success ? "Text inserted before selection" : "Could not insert text",
-          variant: res?.success ? "success" : "error",
-          duration: res?.success ? 2000 : 4000,
-        } as ExtensionMessage);
+        showToast(
+          res?.success ? "Text inserted before selection" : "Could not insert text",
+          res?.success ? "success" : "error",
+        );
         break;
       }
       case "insert_after": {
@@ -338,12 +361,10 @@ export function App() {
           type: "INSERT_AFTER",
           text: resultText,
         });
-        await sendToTab(tabId, {
-          type: "SHOW_TOAST",
-          text: res?.success ? "Text inserted after selection" : "Could not insert text",
-          variant: res?.success ? "success" : "error",
-          duration: res?.success ? 2000 : 4000,
-        } as ExtensionMessage);
+        showToast(
+          res?.success ? "Text inserted after selection" : "Could not insert text",
+          res?.success ? "success" : "error",
+        );
         break;
       }
       case "side_panel_only":
@@ -351,33 +372,38 @@ export function App() {
     }
   }
 
-  async function handleExecute(workflow: Workflow) {
-    if (needsManualInput(workflow)) {
-      if (pendingWorkflow?.slug === workflow.slug) {
-        // Toggle off via button click — manual submit goes through executeTextWorkflow
+  async function handleExecute(action: Action) {
+    if (needsManualInput(action)) {
+      if (pendingAction?.slug === action.slug) {
+        // Toggle off via button click — manual submit goes through executeTextAction
       } else {
-        setPendingWorkflow(workflow);
+        setPendingAction(action);
         setManualInputText("");
       }
       return;
     }
 
-    await executeTextWorkflow(workflow);
+    await executeTextAction(action);
   }
 
-  async function executeTextWorkflow(workflow: Workflow) {
-    setExecuting(workflow.slug);
-    // Tab carrying a lingering "processing" toast, so a thrown error can clear
-    // it (success/normal paths replace or hide it themselves).
-    let processingToastTabId: number | null = null;
+  async function executeTextAction(action: Action) {
+    // Block overlapping runs (e.g. a second hotkey press while one is still in
+    // flight). Without this both runs read the same `history` closure and the
+    // later write clobbers the earlier entry, and their toasts collide.
+    if (executingRef.current) return;
+    executingRef.current = true;
+    setExecuting(action.slug);
     try {
       const [tab] = await chrome.tabs.query({
         active: true,
         currentWindow: true,
       });
-      if (!tab?.id) return;
+      if (!tab?.id) {
+        showToast("No active tab found. Open a webpage and try again.", "warning");
+        return;
+      }
 
-      const isManualInput = workflow.recipe?.input === "manual_input";
+      const isManualInput = action.recipe?.input === "manual_input";
       const tabUrl = tab.url ?? "";
       if (
         !isManualInput &&
@@ -385,14 +411,14 @@ export function App() {
           tabUrl.startsWith("chrome-extension://") ||
           tabUrl.startsWith("about:"))
       ) {
-        showNotice("Cannot run actions on this page. Switch to a regular website tab.");
+        showToast("Cannot run actions on this page. Switch to a regular website tab.", "warning");
         return;
       }
 
       let inputData: InputDataPacket;
 
-      if (workflow.recipe) {
-        inputData = await collectInputData(workflow.recipe, tab.id);
+      if (action.recipe) {
+        inputData = await collectInputData(action.recipe, tab.id);
       } else {
         const response = await sendToTab<SelectionResultMessage>(tab.id, { type: "GET_SELECTION" });
         inputData = {
@@ -408,42 +434,24 @@ export function App() {
       // guard mirrors that. inputData.text carries the HTML for selection_html,
       // which always has content for a real selection (the content script falls
       // back to the plain text), so this only fires when nothing is selected.
-      const input = workflow.recipe?.input;
+      const input = action.recipe?.input;
       const usesSelection = input !== "page_text" && input !== "manual_input";
       if (usesSelection && !inputData.text?.trim()) {
-        // Non-destructive feedback: a page toast (visible where the user just
-        // pressed the hotkey) plus an inline notice, instead of replacing the
-        // whole panel with a full-screen error.
-        await sendToTab(tab.id, {
-          type: "SHOW_TOAST",
-          text: "Select some text first, then run this action.",
-          variant: "error",
-          duration: 3000,
-        } as ExtensionMessage).catch(() => {});
-        showNotice("Select some text on the page first, then run this action.");
+        // Non-destructive feedback instead of replacing the whole panel.
+        showToast("Select some text on the page first, then run this action.", "warning");
         return;
       }
 
-      // Show a processing toast on the page for page-targeted runs, so there is
-      // on-page feedback during the LLM call (esp. when the panel just opened
-      // from a hotkey). applyAction's success/error toast replaces it; the
-      // side-panel-only and failure paths clear it explicitly below.
-      const showsPageToast = !isManualInput;
-      if (showsPageToast) {
-        processingToastTabId = tab.id;
-        await sendToTab(tab.id, {
-          type: "SHOW_TOAST",
-          text: `${workflow.name}...`,
-          variant: "processing",
-        } as ExtensionMessage).catch(() => {});
-      }
+      // Processing feedback during the LLM call. Replaced by applyAction's
+      // success/error toast, or cleared on the side-panel-only / failure paths.
+      showToast(`${action.name}...`, "processing");
 
-      const result = await executeWorkflowUnified(workflow, inputData);
+      const result = await executeActionUnified(action, inputData);
 
       const entry: HistoryEntry = {
         id: result.execution_id,
-        workflow_slug: workflow.slug,
-        workflow_name: workflow.name,
+        action_slug: action.slug,
+        action_name: action.name,
         input_preview: (inputData.text ?? "").substring(0, 100),
         output_preview: result.result?.text?.substring(0, 100) ?? "",
         output_full: result.result?.text ?? undefined,
@@ -455,49 +463,37 @@ export function App() {
       await chrome.storage.local.set({ history: newHistory });
 
       if (result.result?.success && result.result.text) {
-        const action = workflow.output_action ?? result.result.action ?? "none";
+        const outputAction = action.output_action ?? result.result.action ?? "none";
 
         if (
-          action !== "replace_selection" &&
-          action !== "insert_text" &&
-          action !== "insert_before" &&
-          action !== "insert_after" &&
-          action !== "clipboard" &&
-          action !== "copy_to_clipboard"
+          outputAction !== "replace_selection" &&
+          outputAction !== "insert_text" &&
+          outputAction !== "insert_before" &&
+          outputAction !== "insert_after" &&
+          outputAction !== "clipboard" &&
+          outputAction !== "copy_to_clipboard"
         ) {
-          // Result is shown in the panel; applyAction won't show a page toast
-          // for this action, so clear the processing toast.
-          if (showsPageToast) {
-            await sendToTab(tab.id, { type: "HIDE_TOAST" } as ExtensionMessage).catch(() => {});
-          }
+          // Result is shown in the panel; applyAction won't emit a toast for
+          // this action, so clear the processing toast.
+          hideToast();
           setResultText(result.result.text);
-          setResultWorkflowName(workflow.name);
-          setResultWorkflow(workflow);
+          setResultActionName(action.name);
+          setResultAction(action);
           setManualInputText("");
-          setPendingWorkflow(null);
+          setPendingAction(null);
         }
 
-        await applyAction(action, result.result.text, tab.id);
+        await applyAction(outputAction, result.result.text, tab.id);
       } else if (result.result && !result.result.success) {
-        if (showsPageToast) {
-          await sendToTab(tab.id, { type: "HIDE_TOAST" } as ExtensionMessage).catch(() => {});
-        }
-        setError(result.result.error ?? `${workflow.name} failed`);
+        showToast(result.result.error ?? `${action.name} failed`, "error");
       } else if (result.result?.success && !result.result.text) {
-        if (showsPageToast) {
-          await sendToTab(tab.id, { type: "HIDE_TOAST" } as ExtensionMessage).catch(() => {});
-        }
-        setError(`${workflow.name}: no output returned. Check your selection.`);
+        showToast(`${action.name}: no output returned. Check your selection.`, "error");
       }
     } catch (err) {
       console.error("Execution failed:", err);
-      if (processingToastTabId !== null) {
-        await sendToTab(processingToastTabId, { type: "HIDE_TOAST" } as ExtensionMessage).catch(
-          () => {},
-        );
-      }
-      setError(friendlyError(err instanceof Error ? err.message : String(err)));
+      showToast(friendlyError(err instanceof Error ? err.message : String(err)), "error");
     } finally {
+      executingRef.current = false;
       setExecuting(null);
     }
   }
@@ -510,8 +506,8 @@ export function App() {
   }
 
   async function handleFollowUp() {
-    if (!resultWorkflow || !manualInputText.trim()) return;
-    await executeTextWorkflow(resultWorkflow);
+    if (!resultAction || !manualInputText.trim()) return;
+    await executeTextAction(resultAction);
   }
 
   if (loading || setupDone === null) {
@@ -571,29 +567,30 @@ export function App() {
     return <AboutPanel onClose={() => setShowAbout(false)} />;
   }
 
-  // Workflow Editor
-  if (editingWorkflow !== null) {
-    const wf = editingWorkflow === "new" ? null : editingWorkflow;
+  // Action Editor
+  if (editingAction !== null) {
+    const wf = editingAction === "new" ? null : editingAction;
     return (
-      <WorkflowEditor
-        workflow={wf}
+      <ActionEditor
+        action={wf}
         providers={llmProviders}
         categories={categories}
+        existingActions={actions}
         onSave={async (saved) => {
-          await saveLocalWorkflow(saved);
-          setEditingWorkflow(null);
+          await saveLocalAction(saved);
+          setEditingAction(null);
           await loadData();
         }}
         onDelete={
           wf
             ? async (slug) => {
-                await deleteLocalWorkflow(slug);
-                setEditingWorkflow(null);
+                await deleteLocalAction(slug);
+                setEditingAction(null);
                 await loadData();
               }
             : undefined
         }
-        onCancel={() => setEditingWorkflow(null)}
+        onCancel={() => setEditingAction(null)}
       />
     );
   }
@@ -612,7 +609,7 @@ export function App() {
 
   // Category Manager
   if (showCategoryManager) {
-    const workflowCountByCategory = workflows.reduce<Record<string, number>>((acc, w) => {
+    const actionCountByCategory = actions.reduce<Record<string, number>>((acc, w) => {
       const cat = w.category ?? "__uncategorized__";
       acc[cat] = (acc[cat] ?? 0) + 1;
       return acc;
@@ -620,7 +617,7 @@ export function App() {
     return (
       <CategoryManager
         categories={categories}
-        workflowCounts={workflowCountByCategory}
+        actionCounts={actionCountByCategory}
         onSave={handleSaveCategory}
         onDelete={handleDeleteCategory}
         onClose={() => setShowCategoryManager(false)}
@@ -630,17 +627,18 @@ export function App() {
 
   // Result display
   if (resultText !== null) {
-    const showFollowUp = resultWorkflow && needsManualInput(resultWorkflow);
-    const isExecutingResult = resultWorkflow && executing === resultWorkflow.slug;
+    const showFollowUp = resultAction && needsManualInput(resultAction);
+    const isExecutingResult = resultAction && executing === resultAction.slug;
 
     return (
       <div class="flex flex-col h-screen">
+        {toast && <Toast toast={toast} onDismiss={hideToast} />}
         <div class="flex items-center justify-between p-3 border-b bg-white">
           <h1 class="font-bold text-sm">Ancroo</h1>
           <button
             onClick={() => {
               setResultText(null);
-              setResultWorkflow(null);
+              setResultAction(null);
               setCopied(false);
             }}
             class="text-xs text-gray-400 hover:text-gray-600"
@@ -651,7 +649,7 @@ export function App() {
 
         <div class="flex-1 flex flex-col p-3 min-h-0">
           <h2 class="text-xs font-semibold text-gray-500 uppercase mb-2">
-            Result: {resultWorkflowName}
+            Result: {resultActionName}
           </h2>
           <textarea
             readOnly
@@ -725,7 +723,7 @@ export function App() {
           </button>
 
           <button
-            onClick={() => setEditingWorkflow("new")}
+            onClick={() => setEditingAction("new")}
             class="text-xs text-blue-500 hover:text-blue-700"
           >
             + New
@@ -739,30 +737,19 @@ export function App() {
         </div>
       </div>
 
-      {notice && (
-        <div class="flex items-center justify-between gap-2 px-3 py-2 bg-amber-50 border-b border-amber-200 text-xs text-amber-800">
-          <span>{notice}</span>
-          <button
-            onClick={() => setNotice(null)}
-            class="text-amber-500 hover:text-amber-700"
-            aria-label="Dismiss"
-          >
-            ✕
-          </button>
-        </div>
-      )}
+      {toast && <Toast toast={toast} onDismiss={hideToast} />}
 
-      {/* Workflows */}
+      {/* Actions */}
       <div class="flex-1 overflow-y-auto p-3">
         {Object.entries(
-          workflows.reduce<Record<string, Workflow[]>>((groups, w) => {
+          actions.reduce<Record<string, Action[]>>((groups, w) => {
             const cat = w.category ?? "__uncategorized__";
             (groups[cat] ??= []).push(w);
             return groups;
           }, {}),
         )
           .sort(([a], [b]) => a.localeCompare(b))
-          .map(([category, categoryWorkflows]) => (
+          .map(([category, categoryActions]) => (
             <div key={category} class="mb-4">
               <div class="flex items-center mb-2">
                 <button
@@ -777,7 +764,7 @@ export function App() {
                   </span>
                   {category === "__uncategorized__"
                     ? "📂"
-                    : categoryIcon(categoryWorkflows[0], categories)}{" "}
+                    : categoryIcon(categoryActions[0], categories)}{" "}
                   {category === "__uncategorized__"
                     ? "Uncategorized"
                     : (categories.find((c) => c.value === category)?.label ?? category)}
@@ -793,13 +780,13 @@ export function App() {
               </div>
               {!collapsedCategories.has(category) && (
                 <div class="space-y-2">
-                  {categoryWorkflows.map((workflow) => {
-                    const isManual = needsManualInput(workflow);
-                    const isPending = pendingWorkflow?.slug === workflow.slug;
-                    const isExecuting = executing === workflow.slug;
+                  {categoryActions.map((action) => {
+                    const isManual = needsManualInput(action);
+                    const isPending = pendingAction?.slug === action.slug;
+                    const isExecuting = executing === action.slug;
 
                     const inputLabel = ((): string | null => {
-                      switch (workflow.recipe?.input) {
+                      switch (action.recipe?.input) {
                         case "manual_input":
                           return "manual";
                         case "page_text":
@@ -813,7 +800,7 @@ export function App() {
                       }
                     })();
                     const outputLabel: string | null = (() => {
-                      switch (workflow.output_action) {
+                      switch (action.output_action) {
                         case "replace_selection":
                           return "replace";
                         case "copy_to_clipboard":
@@ -830,19 +817,19 @@ export function App() {
                     })();
 
                     return (
-                      <div key={workflow.id}>
+                      <div key={action.id}>
                         <button
-                          onClick={() => handleExecute(workflow)}
+                          onClick={() => handleExecute(action)}
                           disabled={executing !== null && !isPending}
                           class="w-full text-left p-3 bg-white rounded-lg border hover:border-blue-300 hover:shadow-sm transition disabled:opacity-50"
                         >
-                          <div class="font-medium text-sm">{workflow.name}</div>
-                          {workflow.description && (
-                            <div class="text-xs text-gray-500 mt-0.5">{workflow.description}</div>
+                          <div class="font-medium text-sm">{action.name}</div>
+                          {action.description && (
+                            <div class="text-xs text-gray-500 mt-0.5">{action.description}</div>
                           )}
                           <div class="flex items-center gap-2 mt-1">
-                            {workflow.default_hotkey && (
-                              <span class="text-xs text-blue-500">{workflow.default_hotkey}</span>
+                            {action.default_hotkey && (
+                              <span class="text-xs text-blue-500">{action.default_hotkey}</span>
                             )}
                             {inputLabel && (
                               <span class="text-xs text-gray-400">in: {inputLabel}</span>
@@ -854,7 +841,7 @@ export function App() {
                               class="text-xs text-gray-400 hover:text-gray-600 ml-auto"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setEditingWorkflow(workflow as LocalWorkflow);
+                                setEditingAction(action as LocalAction);
                               }}
                             >
                               Edit
@@ -890,7 +877,7 @@ export function App() {
                             {!isExecuting && (
                               <div class="flex gap-2 mt-2">
                                 <button
-                                  onClick={() => executeTextWorkflow(workflow)}
+                                  onClick={() => executeTextAction(action)}
                                   disabled={!manualInputText.trim()}
                                   class="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition text-sm disabled:opacity-50"
                                 >
@@ -898,7 +885,7 @@ export function App() {
                                 </button>
                                 <button
                                   onClick={() => {
-                                    setPendingWorkflow(null);
+                                    setPendingAction(null);
                                     setManualInputText("");
                                   }}
                                   class="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition"
@@ -916,7 +903,7 @@ export function App() {
               )}
             </div>
           ))}
-        {workflows.length === 0 && (
+        {actions.length === 0 && (
           <div class="text-sm text-gray-400 text-center py-4">No actions available</div>
         )}
 
@@ -947,10 +934,8 @@ export function App() {
                     onView={(entry) => {
                       if (entry.output_full) {
                         setResultText(entry.output_full);
-                        setResultWorkflowName(entry.workflow_name);
-                        setResultWorkflow(
-                          workflows.find((w) => w.slug === entry.workflow_slug) ?? null,
-                        );
+                        setResultActionName(entry.action_name);
+                        setResultAction(actions.find((w) => w.slug === entry.action_slug) ?? null);
                         setManualInputText("");
                       }
                     }}

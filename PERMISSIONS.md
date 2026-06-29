@@ -23,7 +23,7 @@ both the dashboard and this file in the same change.
 
 ## `storage`
 
-**Code:** `chrome.storage.local` throughout (`src/background/service-worker.ts`, `src/shared/local-workflows.ts`, history in `service-worker.ts:281`)
+**Code:** `chrome.storage.local` throughout (`src/background/service-worker.ts`, `src/shared/local-actions.ts`, history in `service-worker.ts:281`)
 
 > Stores all user data locally in chrome.storage.local: extension settings, LLM provider configuration, API keys, action definitions, hotkey bindings, and execution history. No data is synced or sent to external servers by the extension itself.
 

@@ -1,51 +1,51 @@
-/** CRUD operations for locally stored workflows. */
+/** CRUD operations for locally stored actions. */
 
-import type { LocalWorkflow, CollectionRecipe } from "./types";
+import type { LocalAction, CollectionRecipe } from "./types";
 
-const STORAGE_KEY = "localWorkflows";
+const STORAGE_KEY = "localActions";
 
-/** List all local workflows. */
-export async function listLocalWorkflows(): Promise<LocalWorkflow[]> {
+/** List all local actions. */
+export async function listLocalActions(): Promise<LocalAction[]> {
   const stored = await chrome.storage.local.get(STORAGE_KEY);
-  return (stored[STORAGE_KEY] as LocalWorkflow[] | undefined) ?? [];
+  return (stored[STORAGE_KEY] as LocalAction[] | undefined) ?? [];
 }
 
-/** Get a single local workflow by slug. */
-export async function getLocalWorkflow(slug: string): Promise<LocalWorkflow | null> {
-  const all = await listLocalWorkflows();
+/** Get a single local action by slug. */
+export async function getLocalAction(slug: string): Promise<LocalAction | null> {
+  const all = await listLocalActions();
   return all.find((w) => w.slug === slug) ?? null;
 }
 
-/** Save a local workflow (create or update by slug). */
-export async function saveLocalWorkflow(workflow: LocalWorkflow): Promise<void> {
-  const all = await listLocalWorkflows();
-  const idx = all.findIndex((w) => w.slug === workflow.slug);
+/** Save a local action (create or update by slug). */
+export async function saveLocalAction(action: LocalAction): Promise<void> {
+  const all = await listLocalActions();
+  const idx = all.findIndex((w) => w.slug === action.slug);
   if (idx >= 0) {
-    all[idx] = workflow;
+    all[idx] = action;
   } else {
-    all.push(workflow);
+    all.push(action);
   }
   await chrome.storage.local.set({ [STORAGE_KEY]: all });
 }
 
-/** Delete a local workflow by slug. */
-export async function deleteLocalWorkflow(slug: string): Promise<void> {
-  const all = await listLocalWorkflows();
+/** Delete a local action by slug. */
+export async function deleteLocalAction(slug: string): Promise<void> {
+  const all = await listLocalActions();
   const filtered = all.filter((w) => w.slug !== slug);
   await chrome.storage.local.set({ [STORAGE_KEY]: filtered });
 }
 
-/** Replace all local workflows (used by backup restore). */
-export async function replaceAllLocalWorkflows(workflows: LocalWorkflow[]): Promise<void> {
-  await chrome.storage.local.set({ [STORAGE_KEY]: workflows });
+/** Replace all local actions (used by backup restore). */
+export async function replaceAllLocalActions(actions: LocalAction[]): Promise<void> {
+  await chrome.storage.local.set({ [STORAGE_KEY]: actions });
 }
 
-/** Seed starter workflows if none exist yet. Sets provider_id on all starters. */
-export async function seedStarterWorkflows(providerId: string, model: string): Promise<void> {
-  const existing = await listLocalWorkflows();
+/** Seed starter actions if none exist yet. Sets provider_id on all starters. */
+export async function seedStarterActions(providerId: string, model: string): Promise<void> {
+  const existing = await listLocalActions();
   if (existing.length > 0) return;
 
-  const starters = getStarterWorkflows(providerId, model);
+  const starters = getStarterActions(providerId, model);
   await chrome.storage.local.set({ [STORAGE_KEY]: starters });
 }
 
@@ -57,7 +57,7 @@ function slugify(name: string): string {
     .replace(/^-|-$/g, "");
 }
 
-/** Build a LocalWorkflow with sensible defaults. */
+/** Build a LocalAction with sensible defaults. */
 function makeStarter(
   name: string,
   description: string,
@@ -68,7 +68,7 @@ function makeStarter(
   model: string,
   hotkey: string | null = null,
   systemPrompt?: string,
-): LocalWorkflow {
+): LocalAction {
   const slug = slugify(name);
   return {
     id: slug,
@@ -79,7 +79,7 @@ function makeStarter(
     category_icon: "⚡",
     default_hotkey: hotkey,
     version: "1.0.0",
-    workflow_type: "text_transformation",
+    action_type: "text_transformation",
     llm_model_name: model,
     stt_model_name: null,
     tool_name: null,
@@ -92,8 +92,8 @@ function makeStarter(
   };
 }
 
-/** Return the built-in starter workflows. */
-export function getStarterWorkflows(providerId: string, model: string): LocalWorkflow[] {
+/** Return the built-in starter actions. */
+export function getStarterActions(providerId: string, model: string): LocalAction[] {
   return [
     makeStarter(
       "Summarize",

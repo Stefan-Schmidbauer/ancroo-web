@@ -1,8 +1,8 @@
-/** Workflow executor — calls LLM directly (no backend). */
+/** Action executor — calls LLM directly (no backend). */
 
-import type { InputDataPacket, ExecuteWorkflowResponse, LocalWorkflow, Workflow } from "./types";
+import type { InputDataPacket, ExecuteActionResponse, LocalAction, Action } from "./types";
 import { getSettings } from "./settings";
-import { getLocalWorkflow } from "./local-workflows";
+import { getLocalAction } from "./local-actions";
 import { renderTemplate } from "./template-renderer";
 import { callLLM } from "./llm";
 import { hasHostPermission } from "./host-permission";
@@ -10,24 +10,20 @@ import { hasHostPermission } from "./host-permission";
 /** Timeout for direct LLM calls (60 seconds). */
 const DIRECT_LLM_TIMEOUT_MS = 60_000;
 
-/** Execute a workflow directly against an LLM provider. */
-export async function executeWorkflowUnified(
-  workflow: Workflow,
+/** Execute a action directly against an LLM provider. */
+export async function executeActionUnified(
+  action: Action,
   inputData: InputDataPacket,
-): Promise<ExecuteWorkflowResponse> {
+): Promise<ExecuteActionResponse> {
   const start = performance.now();
   const executionId = crypto.randomUUID();
 
-  // If called with a plain Workflow (e.g. from cache), look up the full LocalWorkflow
-  let local = workflow as LocalWorkflow;
+  // If called with a plain Action (e.g. from cache), look up the full LocalAction
+  let local = action as LocalAction;
   if (!local.prompt_template) {
-    const found = await getLocalWorkflow(workflow.slug);
+    const found = await getLocalAction(action.slug);
     if (!found) {
-      return errorResult(
-        executionId,
-        start,
-        `Workflow "${workflow.slug}" not found in local storage.`,
-      );
+      return errorResult(executionId, start, `Action "${action.slug}" not found in local storage.`);
     }
     local = found;
   }
@@ -91,7 +87,7 @@ export async function executeWorkflowUnified(
       result: {
         text: response.text,
         action: (local.output_action ?? "side_panel_only") as NonNullable<
-          ExecuteWorkflowResponse["result"]
+          ExecuteActionResponse["result"]
         >["action"],
         success: true,
         error: null,
@@ -110,7 +106,7 @@ export async function executeWorkflowUnified(
 }
 
 /** Build a standardized error response. */
-function errorResult(executionId: string, start: number, error: string): ExecuteWorkflowResponse {
+function errorResult(executionId: string, start: number, error: string): ExecuteActionResponse {
   return {
     execution_id: executionId,
     status: "error",

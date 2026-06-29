@@ -1,6 +1,6 @@
-import type { LocalWorkflow } from "./types";
+import type { LocalAction } from "./types";
 import type { LLMProviderConfig } from "./settings";
-import { listLocalWorkflows, replaceAllLocalWorkflows } from "./local-workflows";
+import { listLocalActions, replaceAllLocalActions } from "./local-actions";
 import { getSettings, saveSettings } from "./settings";
 import { listCategories, replaceAllCategories } from "./local-categories";
 import type { Category } from "./local-categories";
@@ -8,7 +8,7 @@ import type { Category } from "./local-categories";
 export interface BackupData {
   version: "1";
   exportedAt: string;
-  workflows: LocalWorkflow[];
+  actions: LocalAction[];
   providers: LLMProviderConfig[];
   categories?: Category[];
 }
@@ -26,9 +26,9 @@ export function validateBackup(data: unknown): data is BackupData {
   if (!data || typeof data !== "object") return false;
   const d = data as Record<string, unknown>;
   if (d.version !== "1") return false;
-  if (!Array.isArray(d.workflows)) return false;
+  if (!Array.isArray(d.actions)) return false;
   if (!Array.isArray(d.providers)) return false;
-  for (const w of d.workflows) {
+  for (const w of d.actions) {
     if (!w || typeof w !== "object") return false;
     const wf = w as Record<string, unknown>;
     if (
@@ -50,8 +50,8 @@ export function validateBackup(data: unknown): data is BackupData {
 }
 
 export async function exportBackup(includeApiKeys: boolean): Promise<void> {
-  const [workflows, settings, categories] = await Promise.all([
-    listLocalWorkflows(),
+  const [actions, settings, categories] = await Promise.all([
+    listLocalActions(),
     getSettings(),
     listCategories(),
   ]);
@@ -61,22 +61,24 @@ export async function exportBackup(includeApiKeys: boolean): Promise<void> {
   const data: BackupData = {
     version: "1",
     exportedAt: new Date().toISOString(),
-    workflows,
+    actions,
     providers,
     categories,
   };
 
   const json = JSON.stringify(data, null, 2);
   const dataUrl = `data:application/json;charset=utf-8,${encodeURIComponent(json)}`;
-  const date = new Date().toISOString().slice(0, 10);
+  // Date + time so multiple backups on the same day don't collide. Colons aren't
+  // valid in filenames (Windows), so use "YYYY-MM-DD_HH-MM-SS".
+  const stamp = new Date().toISOString().slice(0, 19).replace("T", "_").replace(/:/g, "-");
   await chrome.downloads.download({
     url: dataUrl,
-    filename: `ancroo-backup-${date}.json`,
+    filename: `ancroo-backup-${stamp}.json`,
     saveAs: false,
   });
 }
 
-export async function importBackup(file: File): Promise<{ workflows: number; providers: number }> {
+export async function importBackup(file: File): Promise<{ actions: number; providers: number }> {
   const text = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => resolve(e.target?.result as string);
@@ -95,9 +97,9 @@ export async function importBackup(file: File): Promise<{ workflows: number; pro
     throw new Error("Not a valid Ancroo backup file");
   }
 
-  // Restore semantics: the backup is a snapshot, so replace workflows and
+  // Restore semantics: the backup is a snapshot, so replace actions and
   // categories wholesale instead of merging onto any seeded defaults.
-  await replaceAllLocalWorkflows(parsed.workflows);
+  await replaceAllLocalActions(parsed.actions);
 
   if (parsed.categories) {
     const validCategories = parsed.categories.filter(
@@ -119,5 +121,5 @@ export async function importBackup(file: File): Promise<{ workflows: number; pro
     await saveSettings({ ...current, llm_providers: Array.from(existingById.values()) });
   }
 
-  return { workflows: parsed.workflows.length, providers: parsed.providers.length };
+  return { actions: parsed.actions.length, providers: parsed.providers.length };
 }

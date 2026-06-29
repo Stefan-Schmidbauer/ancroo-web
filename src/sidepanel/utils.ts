@@ -1,9 +1,9 @@
-import { WORKFLOW_CATEGORIES } from "@/shared/types";
-import type { Workflow } from "@/shared/types";
+import { ACTION_CATEGORIES } from "@/shared/types";
+import type { Action } from "@/shared/types";
 
-/** Check if a workflow requires manual text input. */
-export function needsManualInput(workflow: Workflow): boolean {
-  return workflow.recipe?.input === "manual_input";
+/** Check if a action requires manual text input. */
+export function needsManualInput(action: Action): boolean {
+  return action.recipe?.input === "manual_input";
 }
 
 /** Format a timestamp as a relative time string. */
@@ -32,12 +32,12 @@ export function friendlyError(msg: string): string {
   return msg;
 }
 
-/** Return an emoji icon for a workflow category. Checks user categories first, then workflow override, then fallback. */
+/** Return an emoji icon for a action category. Checks user categories first, then action override, then fallback. */
 export function categoryIcon(
-  workflow: { category?: string | null; category_icon?: string | null },
-  categories: { value: string; icon: string }[] = WORKFLOW_CATEGORIES,
+  action: { category?: string | null; category_icon?: string | null },
+  categories: { value: string; icon: string }[] = ACTION_CATEGORIES,
 ): string {
-  const match = categories.find((c) => c.value === workflow.category);
+  const match = categories.find((c) => c.value === action.category);
   if (match) return match.icon;
-  return workflow.category_icon ?? "🔧";
+  return action.category_icon ?? "🔧";
 }

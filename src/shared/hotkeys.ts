@@ -40,7 +40,7 @@ export function buildHotkeyBindings(mappings: HotkeyMapping[]): HotkeyBinding[] 
     const parsed = parseHotkey(mapping.hotkey);
     if (!parsed) continue;
 
-    bindings.push({ parsed, workflow_slug: mapping.workflow_slug });
+    bindings.push({ parsed, action_slug: mapping.action_slug });
   }
 
   return bindings;

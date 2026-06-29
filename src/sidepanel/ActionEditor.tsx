@@ -1,9 +1,10 @@
 import { useState, useEffect } from "preact/hooks";
 import { DEFAULT_CATEGORIES } from "@/shared/local-categories";
 import type { Category } from "@/shared/local-categories";
-import type { LocalWorkflow, CollectionRecipe, WorkflowCategory } from "@/shared/types";
+import type { LocalAction, CollectionRecipe, ActionCategory, Action } from "@/shared/types";
 import type { LLMProviderConfig } from "@/shared/settings";
 import { fetchModels, type ModelInfo } from "@/shared/llm/models";
+import { parseHotkey } from "@/shared/hotkeys";
 
 const INPUT_SOURCES: { value: CollectionRecipe["input"]; label: string }[] = [
   { value: "selection_html", label: "Selection (formatted)" },
@@ -28,49 +29,95 @@ const inputHasSelection = (input: CollectionRecipe["input"]): boolean =>
   input === "selection_html" || input === "selection_plain";
 
 interface Props {
-  workflow: LocalWorkflow | null;
+  action: LocalAction | null;
   providers: LLMProviderConfig[];
   categories?: Category[];
-  onSave: (workflow: LocalWorkflow) => void;
+  /** All existing actions — used to keep new slugs unique and flag hotkey clashes. */
+  existingActions?: Action[];
+  onSave: (action: LocalAction) => void;
   onDelete?: (slug: string) => void;
   onCancel: () => void;
 }
 
 function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
+  // Fall back to "action" so a name made only of symbols/emoji can't collapse
+  // to an empty slug (which would collide with every other empty-slug action).
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "action"
+  );
 }
 
-/** Editor for creating / editing local workflows (card-based layout). */
-export function WorkflowEditor({
-  workflow,
+/** Make `base` unique against `taken` by appending -2, -3, … */
+function uniqueSlug(base: string, taken: Set<string>): string {
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base}-${n}`)) n++;
+  return `${base}-${n}`;
+}
+
+/**
+ * Canonical form of a hotkey for equality checks — normalizes order/casing
+ * ("Shift+Ctrl+g" and "ctrl+shift+G" compare equal). Empty for unparseable.
+ */
+function canonHotkey(h: string): string {
+  const p = parseHotkey(h);
+  if (!p) return "";
+  return [p.ctrlKey && "ctrl", p.altKey && "alt", p.shiftKey && "shift", p.metaKey && "meta", p.key]
+    .filter(Boolean)
+    .join("+");
+}
+
+/**
+ * A hotkey is valid when empty (none) or it has a single alphanumeric key with
+ * at least one Ctrl/Alt modifier (Shift may be added). Shift-only combos are
+ * rejected: the panel/content keydown handlers ignore presses without
+ * Ctrl/Alt/Meta, so a Shift-only hotkey would validate but never fire.
+ */
+function isValidHotkey(raw: string): boolean {
+  const s = raw.trim();
+  if (!s) return true;
+  const parts = s.split("+").map((p) => p.trim().toLowerCase());
+  const key = parts.pop();
+  if (!key || !/^[a-z0-9]$/.test(key)) return false;
+  if (parts.length === 0) return false;
+  const mods = new Set(parts);
+  if (parts.length !== mods.size) return false; // no duplicate modifiers
+  for (const m of mods) if (m !== "ctrl" && m !== "alt" && m !== "shift") return false;
+  return mods.has("ctrl") || mods.has("alt");
+}
+
+/** Editor for creating / editing local actions (card-based layout). */
+export function ActionEditor({
+  action,
   providers,
   categories = DEFAULT_CATEGORIES,
+  existingActions = [],
   onSave,
   onDelete,
   onCancel,
 }: Props) {
-  const isNew = !workflow;
+  const isNew = !action;
   const defaultProvider = providers[0];
 
-  const [name, setName] = useState(workflow?.name ?? "");
-  const [description, setDescription] = useState(workflow?.description ?? "");
-  const [promptTemplate, setPromptTemplate] = useState(workflow?.prompt_template ?? "");
-  const [providerId, setProviderId] = useState(workflow?.provider_id ?? defaultProvider?.id ?? "");
-  const [model, setModel] = useState(workflow?.model ?? "");
-  const [outputAction, setOutputAction] = useState(workflow?.output_action ?? "side_panel_only");
-  const [hotkey, setHotkey] = useState(workflow?.default_hotkey ?? "");
+  const [name, setName] = useState(action?.name ?? "");
+  const [description, setDescription] = useState(action?.description ?? "");
+  const [promptTemplate, setPromptTemplate] = useState(action?.prompt_template ?? "");
+  const [providerId, setProviderId] = useState(action?.provider_id ?? defaultProvider?.id ?? "");
+  const [model, setModel] = useState(action?.model ?? "");
+  const [outputAction, setOutputAction] = useState(action?.output_action ?? "side_panel_only");
+  const [hotkey, setHotkey] = useState(action?.default_hotkey ?? "");
   const [inputSource, setInputSource] = useState<CollectionRecipe["input"]>(
-    workflow?.recipe?.input ?? "selection_plain",
+    action?.recipe?.input ?? "selection_plain",
   );
-  const [category, setCategory] = useState<WorkflowCategory>(
-    (workflow?.category as WorkflowCategory) ?? "Custom",
+  const [category, setCategory] = useState<ActionCategory>(
+    (action?.category as ActionCategory) ?? "Custom",
   );
-  const [systemPrompt, setSystemPrompt] = useState(workflow?.system_prompt ?? "");
-  const [temperature, setTemperature] = useState<string>(workflow?.temperature?.toString() ?? "");
-  const [maxTokens, setMaxTokens] = useState<string>(workflow?.max_tokens?.toString() ?? "");
+  const [systemPrompt, setSystemPrompt] = useState(action?.system_prompt ?? "");
+  const [temperature, setTemperature] = useState<string>(action?.temperature?.toString() ?? "");
+  const [maxTokens, setMaxTokens] = useState<string>(action?.max_tokens?.toString() ?? "");
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [, setLoadingModels] = useState(false);
 
@@ -101,10 +148,10 @@ export function WorkflowEditor({
     try {
       const models = await fetchModels(p);
       setAvailableModels(models);
-      // Drop a selection the live list no longer offers — but keep it when the
-      // list is empty (e.g. a server without /models), so the prefilled provider
-      // default isn't wiped and the user can still enter a model manually.
-      setModel((prev) => (models.length === 0 || models.some((m) => m.id === prev) ? prev : ""));
+      // Keep the current model selection even if the live list omits it. A saved
+      // action's model is known-good, and some providers list retired-but-usable
+      // models (Gemini) or no /models at all — wiping it here would block Save on
+      // an unrelated edit. The picker still offers it as an explicit option.
     } catch {
       setAvailableModels([]);
     } finally {
@@ -112,24 +159,46 @@ export function WorkflowEditor({
     }
   }
 
-  const hotkeyValid =
-    !hotkey.trim() || /^(Ctrl\+|Alt\+|Shift\+){1,3}[A-Za-z0-9]$/i.test(hotkey.trim());
+  const hotkeyValid = isValidHotkey(hotkey);
+
+  // Name of another action already bound to this hotkey, or null if free. Editing
+  // an action ignores its own binding (compare by slug).
+  const hotkeyConflict: string | null = (() => {
+    const h = hotkey.trim();
+    if (!h || !hotkeyValid) return null;
+    const canon = canonHotkey(h);
+    if (!canon) return null;
+    const clash = existingActions.find(
+      (a) => a.slug !== action?.slug && a.default_hotkey && canonHotkey(a.default_hotkey) === canon,
+    );
+    return clash ? clash.name : null;
+  })();
+
+  const canSave =
+    !!name.trim() &&
+    !!promptTemplate.trim() &&
+    !!providerId &&
+    !!model.trim() &&
+    hotkeyValid &&
+    !hotkeyConflict;
 
   function handleSave() {
-    if (!name.trim() || !promptTemplate.trim() || !providerId || !model.trim() || !hotkeyValid)
-      return;
+    if (!canSave) return;
 
-    const slug = workflow?.slug ?? slugify(name);
-    const saved: LocalWorkflow = {
-      id: workflow?.id ?? slug,
+    // A new action's slug must not collide with an existing one — saveLocalAction
+    // upserts by slug, so a duplicate would silently overwrite that action.
+    const slug =
+      action?.slug ?? uniqueSlug(slugify(name), new Set(existingActions.map((a) => a.slug)));
+    const saved: LocalAction = {
+      id: action?.id ?? slug,
       slug,
       name: name.trim(),
       description: description.trim() || null,
       category,
       category_icon: categories.find((c) => c.value === category)?.icon ?? null,
       default_hotkey: hotkey.trim() || null,
-      version: workflow?.version ?? "1.0.0",
-      workflow_type: "text_transformation",
+      version: action?.version ?? "1.0.0",
+      action_type: "text_transformation",
       llm_model_name: model,
       stt_model_name: null,
       tool_name: null,
@@ -183,9 +252,7 @@ export function WorkflowEditor({
             <label class="text-xs font-medium text-gray-700">Category</label>
             <select
               value={category}
-              onChange={(e) =>
-                setCategory((e.target as HTMLSelectElement).value as WorkflowCategory)
-              }
+              onChange={(e) => setCategory((e.target as HTMLSelectElement).value as ActionCategory)}
               class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
             >
               {categories.map((c) => (
@@ -253,6 +320,10 @@ export function WorkflowEditor({
                   class="flex-1 min-w-0 border rounded px-2 py-1.5 text-sm font-mono"
                 >
                   <option value="">Select a model...</option>
+                  {/* Keep the saved model selectable even if the live list omits it. */}
+                  {model && !availableModels.some((m) => m.id === model) && (
+                    <option value={model}>{model}</option>
+                  )}
                   {availableModels.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.name}
@@ -341,13 +412,19 @@ export function WorkflowEditor({
               type="text"
               value={hotkey}
               onInput={(e) => setHotkey((e.target as HTMLInputElement).value)}
-              class={`w-full border rounded px-2 py-1.5 text-sm mt-0.5 ${hotkey.trim() && !hotkeyValid ? "border-red-400" : ""}`}
+              class={`w-full border rounded px-2 py-1.5 text-sm mt-0.5 ${(hotkey.trim() && !hotkeyValid) || hotkeyConflict ? "border-red-400" : ""}`}
               placeholder="Ctrl+Shift+G"
             />
             {hotkey.trim() && !hotkeyValid ? (
-              <p class="text-xs text-red-500 mt-0.5">Invalid format. Example: Ctrl+Shift+G</p>
+              <p class="text-xs text-red-500 mt-0.5">
+                Needs Ctrl or Alt (Shift optional). Example: Ctrl+Shift+G
+              </p>
+            ) : hotkeyConflict ? (
+              <p class="text-xs text-red-500 mt-0.5">
+                Already used by "{hotkeyConflict}". Pick a different combination.
+              </p>
             ) : (
-              <p class="text-xs text-gray-400 mt-0.5">Modifiers: Ctrl, Alt, Shift</p>
+              <p class="text-xs text-gray-400 mt-0.5">Modifiers: Ctrl or Alt (optionally Shift)</p>
             )}
           </div>
         </div>
@@ -357,16 +434,14 @@ export function WorkflowEditor({
       <div class="p-3 border-t bg-white space-y-2">
         <button
           onClick={handleSave}
-          disabled={
-            !name.trim() || !promptTemplate.trim() || !providerId || !model.trim() || !hotkeyValid
-          }
+          disabled={!canSave}
           class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition text-sm disabled:opacity-50"
         >
           {isNew ? "Create Action" : "Save Changes"}
         </button>
         {!isNew && onDelete && (
           <button
-            onClick={() => onDelete(workflow!.slug)}
+            onClick={() => onDelete(action!.slug)}
             class="w-full text-xs text-red-400 hover:text-red-600"
           >
             Delete Action

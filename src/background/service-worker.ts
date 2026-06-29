@@ -1,5 +1,5 @@
 import { buildHotkeyBindings, HOTKEY_STORAGE_KEY } from "@/shared/hotkeys";
-import { fetchHotkeySettingsUnified } from "@/shared/workflow-provider";
+import { fetchHotkeySettingsUnified } from "@/shared/action-provider";
 import type { HotkeyBinding } from "@/shared/types";
 
 // Allow content scripts to read chrome.storage.session (required for hotkey bindings)
@@ -10,7 +10,7 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
   if (sender.id !== chrome.runtime.id) return false;
 
   // --- Content script detected a hotkey press ---
-  if (msg.type === "EXECUTE_HOTKEY_WORKFLOW") {
+  if (msg.type === "EXECUTE_HOTKEY_ACTION") {
     // Open the side panel SYNCHRONOUSLY while the user-gesture context is still
     // available.  After any `await` Chrome no longer considers this user-initiated
     // and chrome.sidePanel.open() silently fails.  The side panel is the single
@@ -18,16 +18,16 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
     if (sender.tab?.id) {
       chrome.sidePanel.open({ tabId: sender.tab.id }).catch(() => {});
     }
-    // Queue the workflow for the side panel to pick up. The nonce makes the
+    // Queue the action for the side panel to pick up. The nonce makes the
     // storage value change on every press, so an already-open panel reacts via
     // storage.onChanged even when the same hotkey is pressed twice in a row.
     chrome.storage.session
-      .set({ pendingWorkflowTrigger: { slug: msg.workflowSlug, nonce: Date.now() } })
+      .set({ pendingActionTrigger: { slug: msg.actionSlug, nonce: Date.now() } })
       .catch(() => {});
     return false;
   }
 
-  // --- Side panel loaded workflows, refresh the hotkey map ---
+  // --- Side panel loaded actions, refresh the hotkey map ---
   if (msg.type === "REFRESH_HOTKEYS") {
     refreshHotkeyBindings().catch((err) => {
       console.error("Hotkey refresh failed:", err);

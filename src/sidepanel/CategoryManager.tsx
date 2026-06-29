@@ -67,7 +67,7 @@ function IconPicker({ onSelect }: { onSelect: (emoji: string) => void }) {
 
 interface Props {
   categories: Category[];
-  workflowCounts?: Record<string, number>;
+  actionCounts?: Record<string, number>;
   onSave: (cat: Category) => void;
   onDelete: (value: string) => void;
   onClose: () => void;
@@ -82,7 +82,7 @@ function slugify(name: string): string {
 
 export function CategoryManager({
   categories,
-  workflowCounts = {},
+  actionCounts = {},
   onSave,
   onDelete,
   onClose,
@@ -192,8 +192,8 @@ export function CategoryManager({
               <div class="space-y-2">
                 <p class="text-xs text-gray-600">
                   Delete <strong>{cat.label}</strong>?
-                  {(workflowCounts[cat.value] ?? 0) > 0
-                    ? ` ${workflowCounts[cat.value]} action${workflowCounts[cat.value] === 1 ? "" : "s"} will be moved to Uncategorized.`
+                  {(actionCounts[cat.value] ?? 0) > 0
+                    ? ` ${actionCounts[cat.value]} action${actionCounts[cat.value] === 1 ? "" : "s"} will be moved to Uncategorized.`
                     : ""}
                 </p>
                 <div class="flex gap-2">

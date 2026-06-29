@@ -10,7 +10,7 @@ export interface InputDataPacket {
 }
 
 /** Fallback category list used when no stored categories exist yet. */
-export const WORKFLOW_CATEGORIES = [
+export const ACTION_CATEGORIES = [
   { value: "Starter", label: "Starter", icon: "⚡" },
   { value: "Writing", label: "Writing", icon: "✍️" },
   { value: "Coding", label: "Coding", icon: "💻" },
@@ -20,10 +20,10 @@ export const WORKFLOW_CATEGORIES = [
   { value: "Custom", label: "Custom", icon: "🔧" },
 ];
 
-export type WorkflowCategory = string;
+export type ActionCategory = string;
 
-/** Workflow definition from the backend. */
-export interface Workflow {
+/** Action definition from the backend. */
+export interface Action {
   id: string;
   slug: string;
   name: string;
@@ -32,7 +32,7 @@ export interface Workflow {
   category_icon: string | null;
   default_hotkey: string | null;
   version: string;
-  workflow_type: string;
+  action_type: string;
   llm_model_name: string | null;
   stt_model_name: string | null;
   tool_name: string | null;
@@ -40,8 +40,8 @@ export interface Workflow {
   output_action: string | null;
 }
 
-/** Local workflow stored in chrome.storage. Extends Workflow so existing UI works unchanged. */
-export interface LocalWorkflow extends Workflow {
+/** Local action stored in chrome.storage. Extends Action so existing UI works unchanged. */
+export interface LocalAction extends Action {
   /** Prompt template with {text}, {url}, {title} placeholders. */
   prompt_template: string;
   /** ID of the LLMProviderConfig to use. */
@@ -56,7 +56,7 @@ export interface LocalWorkflow extends Workflow {
   temperature?: number;
 }
 
-/** Result from executing a workflow. */
+/** Result from executing a action. */
 export interface ExecutionResult {
   text: string | null;
   action:
@@ -72,7 +72,7 @@ export interface ExecutionResult {
 }
 
 /** Full execution response from the backend. */
-export interface ExecuteWorkflowResponse {
+export interface ExecuteActionResponse {
   execution_id: string;
   status: "success" | "error";
   result: ExecutionResult | null;
@@ -82,8 +82,8 @@ export interface ExecuteWorkflowResponse {
 /** Execution history entry (stored locally). */
 export interface HistoryEntry {
   id: string;
-  workflow_slug: string;
-  workflow_name: string;
+  action_slug: string;
+  action_name: string;
   input_preview: string;
   output_preview: string;
   /** Full output text for copy-to-clipboard. */
@@ -92,11 +92,11 @@ export interface HistoryEntry {
   timestamp: number;
 }
 
-/** Single hotkey-to-workflow mapping from the server. */
+/** Single hotkey-to-action mapping from the server. */
 export interface HotkeyMapping {
-  workflow_id: string;
-  workflow_slug: string;
-  workflow_name: string;
+  action_id: string;
+  action_slug: string;
+  action_name: string;
   /** Effective hotkey string (custom or default), e.g. "Ctrl+Shift+G". */
   hotkey: string;
   is_enabled: boolean;
@@ -112,8 +112,8 @@ export interface ParsedHotkey {
   metaKey: boolean;
 }
 
-/** A parsed hotkey bound to a workflow slug for the content script. */
+/** A parsed hotkey bound to a action slug for the content script. */
 export interface HotkeyBinding {
   parsed: ParsedHotkey;
-  workflow_slug: string;
+  action_slug: string;
 }

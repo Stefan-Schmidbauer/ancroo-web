@@ -30,7 +30,7 @@ export function HistoryItem({
       onClick={() => hasFull && onView(entry)}
     >
       <div class="flex items-center justify-between gap-1">
-        <span class="font-medium truncate">{entry.workflow_name}</span>
+        <span class="font-medium truncate">{entry.action_name}</span>
         <div class="flex items-center gap-1.5 shrink-0">
           <span class="text-gray-400">{timeAgo(entry.timestamp)}</span>
           <span class={entry.success ? "text-green-600" : "text-red-600"}>

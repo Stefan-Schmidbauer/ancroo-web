@@ -43,21 +43,9 @@ export interface InsertResultMessage {
   success: boolean;
 }
 
-export interface ExecuteHotkeyWorkflowMessage {
-  type: "EXECUTE_HOTKEY_WORKFLOW";
-  workflowSlug: string;
-}
-
-export interface ShowToastMessage {
-  type: "SHOW_TOAST";
-  text: string;
-  variant: "processing" | "success" | "error";
-  /** Auto-dismiss after ms (0 = stay until replaced). */
-  duration?: number;
-}
-
-export interface HideToastMessage {
-  type: "HIDE_TOAST";
+export interface ExecuteHotkeyActionMessage {
+  type: "EXECUTE_HOTKEY_ACTION";
+  actionSlug: string;
 }
 
 export interface WriteClipboardMessage {
@@ -79,8 +67,6 @@ export type ExtensionMessage =
   | InsertBeforeMessage
   | InsertAfterMessage
   | InsertResultMessage
-  | ExecuteHotkeyWorkflowMessage
-  | ShowToastMessage
-  | HideToastMessage
+  | ExecuteHotkeyActionMessage
   | WriteClipboardMessage
   | WriteClipboardResultMessage;

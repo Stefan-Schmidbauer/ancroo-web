@@ -91,8 +91,8 @@ function hotkeyHandler(event: KeyboardEvent): void {
 
       try {
         chrome.runtime.sendMessage({
-          type: "EXECUTE_HOTKEY_WORKFLOW",
-          workflowSlug: binding.workflow_slug,
+          type: "EXECUTE_HOTKEY_ACTION",
+          actionSlug: binding.action_slug,
         });
       } catch {
         // "Extension context invalidated" — this content script is orphaned
@@ -184,16 +184,6 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     return true;
   }
 
-  if (message.type === "SHOW_TOAST") {
-    showToast(message.text, message.variant, message.duration);
-    return false;
-  }
-
-  if (message.type === "HIDE_TOAST") {
-    hideToast();
-    return false;
-  }
-
   if (message.type === "WRITE_CLIPBOARD") {
     navigator.clipboard.writeText(message.text).then(
       () => sendResponse({ type: "WRITE_CLIPBOARD_RESULT", success: true }),
@@ -219,59 +209,3 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
 
   return false;
 });
-
-// --- Toast overlay for hotkey feedback ---
-
-const TOAST_ID = "__ancroo-toast";
-let toastTimer: ReturnType<typeof setTimeout> | undefined;
-
-function showToast(
-  text: string,
-  variant: "processing" | "success" | "error",
-  duration?: number,
-): void {
-  let el = document.getElementById(TOAST_ID);
-  if (!el) {
-    el = document.createElement("div");
-    el.id = TOAST_ID;
-    el.style.cssText = [
-      "position:fixed",
-      "bottom:24px",
-      "right:24px",
-      "z-index:2147483647",
-      "padding:10px 18px",
-      "border-radius:8px",
-      "font:14px/1.4 -apple-system,BlinkMacSystemFont,sans-serif",
-      "color:#fff",
-      "box-shadow:0 4px 12px rgba(0,0,0,.25)",
-      "pointer-events:none",
-      "transition:opacity .2s",
-      "opacity:0",
-    ].join(";");
-    document.documentElement.appendChild(el);
-  }
-
-  const colors = { processing: "#3b82f6", success: "#22c55e", error: "#ef4444" };
-  el.style.background = colors[variant];
-
-  const icons = { processing: "⏳", success: "✔", error: "✘" };
-  el.textContent = `${icons[variant]}  ${text}`;
-
-  // Force reflow then fade in
-  void el.offsetWidth;
-  el.style.opacity = "1";
-
-  clearTimeout(toastTimer);
-  if (duration && duration > 0) {
-    toastTimer = setTimeout(hideToast, duration);
-  }
-}
-
-function hideToast(): void {
-  const el = document.getElementById(TOAST_ID);
-  if (el) {
-    el.style.opacity = "0";
-    setTimeout(() => el.remove(), 200);
-  }
-  clearTimeout(toastTimer);
-}

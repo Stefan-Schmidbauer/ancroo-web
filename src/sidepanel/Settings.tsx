@@ -59,7 +59,7 @@ export function Settings({ onClose }: Props) {
         // Ignore — execution surfaces a clear hint if a grant is still missing.
       }
       setBackupStatus({
-        msg: `Imported ${result.workflows} action${result.workflows !== 1 ? "s" : ""}, ${result.providers} provider${result.providers !== 1 ? "s" : ""}.`,
+        msg: `Imported ${result.actions} action${result.actions !== 1 ? "s" : ""}, ${result.providers} provider${result.providers !== 1 ? "s" : ""}.`,
         ok: true,
       });
     } catch (e) {
