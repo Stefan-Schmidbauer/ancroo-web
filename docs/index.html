@@ -118,37 +118,6 @@
         font-size: 13px;
       }
 
-      .grid-2 {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 12px;
-      }
-
-      @media (max-width: 520px) {
-        .grid-2 {
-          grid-template-columns: 1fr;
-        }
-      }
-
-      .rich {
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 10px 12px;
-        min-height: 110px;
-        font-size: 14px;
-      }
-
-      .rich:focus {
-        outline: none;
-        border-color: var(--accent);
-        box-shadow: 0 0 0 3px var(--accent-soft);
-      }
-
-      .rich ul {
-        margin: 8px 0;
-        padding-left: 20px;
-      }
-
       .hint {
         background: var(--accent-soft);
         border: 1px solid var(--accent-border);
@@ -202,8 +171,8 @@
       <header>
         <h1>Ancroo Web &mdash; Live Demo</h1>
         <p class="lead">
-          Try the text-transformation workflows right here. Select any text below, open the Ancroo
-          side panel, and run a workflow.
+          Select the text in a card below, open the Ancroo side panel, and run the matching
+          workflow.
         </p>
         <p class="links">
           <a href="https://github.com/ancroo/ancroo-web" target="_blank" rel="noopener"
@@ -212,50 +181,74 @@
         </p>
       </header>
 
-      <!-- Section 1: Text Areas -->
+      <!-- 1: Fix Grammar -->
       <section class="card">
-        <h2>Text areas</h2>
-
+        <h2>Fix Grammar</h2>
         <div class="field">
-          <label>English text with errors (try "Fix Grammar")</label>
-          <textarea rows="4">
-Their going to the store tommorow, but they dont no what too buy. The weater forecast says its going to rain, so they should probaly bring an umbrella. Me and him was thinking about going to the libary afterwards.</textarea
-          >
-        </div>
-
-        <div class="field">
-          <label>German text (try "Translate to English" or "Rewrite Formal")</label>
-          <textarea rows="4">
-Die kuenstliche Intelligenz veraendert unsere Arbeitswelt grundlegend. Viele Aufgaben, die frueher manuell erledigt wurden, koennen heute automatisiert werden. Das spart Zeit und reduziert Fehler, erfordert aber auch neue Kompetenzen.</textarea
-          >
-        </div>
-
-        <div class="field">
-          <label>Code snippet (try "Explain")</label>
-          <textarea class="mono" rows="6">
-def calcPrice(items, tax):
-    total = 0
-    for i in items:
-        total = total + i['price'] * i['qty']
-    total = total + (total * tax)
-    return total</textarea
+          <label>Select this text, then run "Fix Grammar"</label>
+          <textarea rows="2">
+Their going to the store tommorow, but they dont no what too buy.</textarea
           >
         </div>
       </section>
 
-      <!-- Section 2: Input Fields -->
+      <!-- 2: Translate to English -->
+      <section class="card">
+        <h2>Translate to English</h2>
+        <div class="field">
+          <label>Select this German text, then run "Translate to English"</label>
+          <textarea rows="2">
+Künstliche Intelligenz verändert unsere Arbeitswelt grundlegend und spart dabei viel Zeit.</textarea
+          >
+        </div>
+      </section>
+
+      <!-- 3: Draft Reply -->
+      <section class="card">
+        <h2>Draft Reply</h2>
+        <div class="field">
+          <label>Select this email, then run "Draft Reply"</label>
+          <textarea rows="8">
+Hi,
+
+we loved your recent write-up on Ancroo and would like to invite you to give a short talk at our meetup on March 12th. Would you be open to it?
+
+Best,
+Priya &mdash; DevCircle</textarea
+          >
+        </div>
+      </section>
+
+      <!-- 4: HTML test -->
+      <section class="card">
+        <h2>HTML test</h2>
+        <p style="margin: 0 0 8px; font-size: 12px; color: var(--muted)">
+          Select any text in this regular HTML below, then run a workflow.
+        </p>
+        <h3 style="margin: 0 0 8px; font-size: 15px">Quarterly update</h3>
+        <p style="margin: 0 0 8px">
+          Our <strong>Q1 results</strong> are in: revenue grew by <em>18%</em> and we shipped three
+          new features. Read the full report on our <a href="#">blog</a>.
+        </p>
+        <ul style="margin: 0; padding-left: 20px">
+          <li>New dashboard with live metrics</li>
+          <li>Faster export (up to 3&times;)</li>
+          <li>Dark mode</li>
+        </ul>
+      </section>
+
+      <!-- More fields to test -->
       <section class="card">
         <h2>Input fields</h2>
 
-        <div class="grid-2" style="margin-bottom: 14px">
-          <div>
-            <label>Name (try "Fix Capitalization")</label>
-            <input type="text" value="max mustermann" />
-          </div>
-          <div>
-            <label>Email</label>
-            <input type="text" value="Max.Mustermann@EXAMPLE.com" />
-          </div>
+        <div class="field">
+          <label>Name (try "Fix Capitalization")</label>
+          <input type="text" value="max mustermann" />
+        </div>
+
+        <div class="field">
+          <label>Email</label>
+          <input type="text" value="Max.Mustermann@EXAMPLE.com" />
         </div>
 
         <div class="field">
@@ -272,33 +265,20 @@ def calcPrice(items, tax):
         </div>
       </section>
 
-      <!-- Section 3: Contenteditable -->
       <section class="card">
-        <h2>Rich text (contenteditable)</h2>
-        <div class="rich" contenteditable="true">
-          <p>
-            This is a <strong>rich text</strong> area. Select part of this text and run a workflow
-            to see its output action in action:
-          </p>
-          <ul>
-            <li>
-              <em>Replace selection</em> &mdash; e.g. "Rewrite Formal" or "Fix Grammar" swaps your
-              selection in place
-            </li>
-            <li>
-              <em>Show in side panel</em> &mdash; e.g. "Summarize" or "Explain" leaves the text
-              untouched and shows the result on the side
-            </li>
-          </ul>
-          <p>
-            Want text inserted <em>before</em>/<em>after</em> the selection, or copied to the
-            clipboard instead? Those output actions are available too &mdash; pick them when you
-            build your own workflow in the editor.
-          </p>
+        <h2>Code snippet (try "Explain")</h2>
+        <div class="field">
+          <textarea class="mono" rows="6">
+def calcPrice(items, tax):
+    total = 0
+    for i in items:
+        total = total + i['price'] * i['qty']
+    total = total + (total * tax)
+    return total</textarea
+          >
         </div>
       </section>
 
-      <!-- Section 4: Sample Email -->
       <section class="card">
         <h2>Sample email (warranty claim)</h2>
         <div class="field">
@@ -334,57 +314,21 @@ Email: j.whitfield@example.com</textarea
         </div>
       </section>
 
-      <!-- Section 5: Short Email (reply / decline / thank-you) -->
-      <section class="card">
-        <h2>Short email (invitation)</h2>
-        <div class="field">
-          <label
-            >A quick request &mdash; try "Draft Reply", "Polite Decline", or "Thank-You Note"</label
-          >
-          <textarea rows="9">
-Hi,
-
-We really enjoyed your recent write-up on Ancroo and would love to invite you to give a 20-minute talk at our community meetup on March 12th. We can cover travel costs and would record the session for our channel.
-
-Would you be open to it? Happy to work around your schedule.
-
-Best,
-Priya Nair
-Community Lead, DevCircle</textarea
-          >
-        </div>
-      </section>
-
       <!-- How to use -->
       <section class="hint">
         <p class="title">How to use</p>
         <ol>
           <li>
-            Install the Ancroo Web extension and configure at least one LLM provider (the 10 starter
+            Install the Ancroo Web extension and configure at least one LLM provider (the starter
             workflows are created automatically).
           </li>
-          <li>Select text in any field above.</li>
+          <li>Select the text in a card above.</li>
           <li>
             Open the Ancroo side panel (toolbar icon, or <code>Alt+Shift+Y</code>). You can assign a
             custom hotkey to any workflow in its editor.
           </li>
-          <li>
-            Pick a workflow and run it &mdash; e.g. Summarize, Translate to English, Rewrite Formal,
-            Explain, Fix Grammar, Fix Capitalization, Draft Reply, Polite Decline, or Thank-You
-            Note.
-          </li>
-          <li>
-            The starter workflows either <strong>replace your selection</strong> (Translate,
-            Rewrite, Fix Grammar, Fix Capitalization) or
-            <strong>show the result in the side panel</strong> (Summarize, Explain, the reply
-            workflows). Your own workflows can also insert before/after the selection or copy to the
-            clipboard.
-          </li>
+          <li>Run the matching workflow &mdash; Fix Grammar, Translate to English, or Draft Reply.</li>
         </ol>
-        <p class="note">
-          <strong>Manual-input workflows</strong> (like "Ask AI") don't need a selection &mdash;
-          just open the side panel and type your text.
-        </p>
       </section>
 
       <footer>

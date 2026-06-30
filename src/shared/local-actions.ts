@@ -202,6 +202,15 @@ export function getStarterActions(providerId: string, model: string): LocalActio
       "You are a helpful assistant that writes warm, professional email replies.",
     ),
     makeStarter(
+      "Convert to Markdown",
+      "Convert the selected HTML to clean Markdown.",
+      "Convert the following HTML to clean, well-formatted Markdown. Preserve headings, emphasis, links, and lists. Only output the Markdown, nothing else:\n\n{text}",
+      "selection_html",
+      "side_panel_only",
+      providerId,
+      model,
+    ),
+    makeStarter(
       "Ask AI",
       "Ask the AI a question.",
       "{text}",
