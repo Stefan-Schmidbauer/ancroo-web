@@ -10,10 +10,14 @@ dist/
 *.swp
 *~
 .DS_Store
+Thumbs.db
+Desktop.ini
+*.tsbuildinfo
 
 # Packaging artifacts
 *.crx
 *.zip
+*.pem
 
 # Test output
 coverage/
@@ -24,6 +28,7 @@ CLAUDE.md
 
 # Local-only marketing & notes (not for public repo)
 notes/
+marketing/
 store/
-blog/
-youtube/
+STORE_LISTING.md
+
