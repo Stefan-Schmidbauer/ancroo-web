@@ -1,6 +1,7 @@
 /** CRUD operations for locally stored actions. */
 
 import type { LocalAction, CollectionRecipe } from "./types";
+import { slugify } from "./slug";
 
 const STORAGE_KEY = "localActions";
 /** Pre-v1.6.0 storage key. Up to v1.4.2 (live on the Web Store) actions were
@@ -64,14 +65,6 @@ export async function seedStarterActions(providerId: string, model: string): Pro
   await chrome.storage.local.set({ [STORAGE_KEY]: starters });
 }
 
-/** Generate slugs from names. */
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
 /** Build a LocalAction with sensible defaults. */
 function makeStarter(
   name: string,
@@ -84,7 +77,7 @@ function makeStarter(
   hotkey: string | null = null,
   systemPrompt?: string,
 ): LocalAction {
-  const slug = slugify(name);
+  const slug = slugify(name, "action");
   return {
     id: slug,
     slug,

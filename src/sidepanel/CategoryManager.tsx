@@ -1,5 +1,6 @@
 import { useState } from "preact/hooks";
 import type { Category } from "@/shared/local-categories";
+import { slugify } from "@/shared/slug";
 
 const ICON_SUGGESTIONS = [
   "📝",
@@ -73,13 +74,6 @@ interface Props {
   onClose: () => void;
 }
 
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
 export function CategoryManager({
   categories,
   actionCounts = {},
@@ -131,7 +125,7 @@ export function CategoryManager({
 
   function saveNew() {
     if (!newLabel.trim()) return;
-    const value = slugify(newLabel);
+    const value = slugify(newLabel, "category");
     onSave({ value, label: newLabel.trim(), icon: newIcon.trim() || "🔧" });
     cancelAdd();
   }

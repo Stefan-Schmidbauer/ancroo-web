@@ -5,6 +5,7 @@ import type { LocalAction, CollectionRecipe, ActionCategory, Action } from "@/sh
 import type { LLMProviderConfig } from "@/shared/settings";
 import { fetchModels, type ModelInfo } from "@/shared/llm/models";
 import { parseHotkey } from "@/shared/hotkeys";
+import { slugify } from "@/shared/slug";
 
 const INPUT_SOURCES: { value: CollectionRecipe["input"]; label: string }[] = [
   { value: "selection_html", label: "Selection (formatted)" },
@@ -37,17 +38,6 @@ interface Props {
   onSave: (action: LocalAction) => void;
   onDelete?: (slug: string) => void;
   onCancel: () => void;
-}
-
-function slugify(name: string): string {
-  // Fall back to "action" so a name made only of symbols/emoji can't collapse
-  // to an empty slug (which would collide with every other empty-slug action).
-  return (
-    name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "") || "action"
-  );
 }
 
 /** Make `base` unique against `taken` by appending -2, -3, … */
@@ -119,17 +109,30 @@ export function ActionEditor({
   const [temperature, setTemperature] = useState<string>(action?.temperature?.toString() ?? "");
   const [maxTokens, setMaxTokens] = useState<string>(action?.max_tokens?.toString() ?? "");
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
-  const [, setLoadingModels] = useState(false);
 
-  // Load models when provider changes
+  // Load models when provider changes. Latest-wins: without the cancel flag a
+  // slow fetch for the previous provider could resolve after the new one and
+  // fill the picker with the wrong provider's models.
   useEffect(() => {
-    if (providerId) {
-      const provider = providers.find((p) => p.id === providerId);
-      if (provider) {
-        if (!model) setModel(provider.model || "");
-        loadModels(provider);
-      }
-    }
+    if (!providerId) return;
+    const provider = providers.find((p) => p.id === providerId);
+    if (!provider) return;
+    if (!model) setModel(provider.model || "");
+    let cancelled = false;
+    fetchModels(provider)
+      .then((models) => {
+        // Keep the current model selection even if the live list omits it. A saved
+        // action's model is known-good, and some providers list retired-but-usable
+        // models (Gemini) or no /models at all — wiping it here would block Save on
+        // an unrelated edit. The picker still offers it as an explicit option.
+        if (!cancelled) setAvailableModels(models);
+      })
+      .catch(() => {
+        if (!cancelled) setAvailableModels([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [providerId]);
 
   // Keep Output valid for the chosen Input: a selection-based output without a
@@ -140,24 +143,6 @@ export function ActionEditor({
       setOutputAction("side_panel_only");
     }
   }, [inputSource, outputAction]);
-
-  async function loadModels(provider?: LLMProviderConfig) {
-    const p = provider ?? providers.find((pr) => pr.id === providerId);
-    if (!p) return;
-    setLoadingModels(true);
-    try {
-      const models = await fetchModels(p);
-      setAvailableModels(models);
-      // Keep the current model selection even if the live list omits it. A saved
-      // action's model is known-good, and some providers list retired-but-usable
-      // models (Gemini) or no /models at all — wiping it here would block Save on
-      // an unrelated edit. The picker still offers it as an explicit option.
-    } catch {
-      setAvailableModels([]);
-    } finally {
-      setLoadingModels(false);
-    }
-  }
 
   const hotkeyValid = isValidHotkey(hotkey);
 
@@ -188,7 +173,8 @@ export function ActionEditor({
     // A new action's slug must not collide with an existing one — saveLocalAction
     // upserts by slug, so a duplicate would silently overwrite that action.
     const slug =
-      action?.slug ?? uniqueSlug(slugify(name), new Set(existingActions.map((a) => a.slug)));
+      action?.slug ??
+      uniqueSlug(slugify(name, "action"), new Set(existingActions.map((a) => a.slug)));
     const saved: LocalAction = {
       id: action?.id ?? slug,
       slug,
