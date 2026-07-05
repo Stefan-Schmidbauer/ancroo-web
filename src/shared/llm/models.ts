@@ -1,8 +1,10 @@
 /** Fetch available models from LLM providers. */
 
 import type { LLMProviderConfig } from "../settings";
-import { resolveBaseUrl } from "./openai";
-import { ensureOriginRule } from "./ollama";
+import { resolveBaseUrl, OPENROUTER_DEFAULT_BASE_URL } from "./openai";
+import { resolveAnthropicBaseUrl } from "./anthropic";
+import { resolveGeminiBaseUrl } from "./gemini";
+import { ensureOriginRule, OLLAMA_DEFAULT_BASE_URL } from "./ollama";
 
 export interface ModelInfo {
   id: string;
@@ -18,7 +20,10 @@ export async function fetchModels(provider: LLMProviderConfig): Promise<ModelInf
     case "openai-compatible":
       return fetchOpenAIModels(provider);
     case "openrouter":
-      return fetchOpenAIModels({ ...provider, base_url: "https://openrouter.ai/api/v1" });
+      return fetchOpenAIModels({
+        ...provider,
+        base_url: provider.base_url || OPENROUTER_DEFAULT_BASE_URL,
+      });
     case "gemini":
       return fetchGeminiModels(provider);
     case "anthropic":
@@ -29,7 +34,7 @@ export async function fetchModels(provider: LLMProviderConfig): Promise<ModelInf
 }
 
 async function fetchOllamaModels(provider: LLMProviderConfig): Promise<ModelInfo[]> {
-  const baseUrl = (provider.base_url || "http://localhost:11434").replace(/\/+$/, "");
+  const baseUrl = (provider.base_url || OLLAMA_DEFAULT_BASE_URL).replace(/\/+$/, "");
   // Override the Origin header via declarativeNetRequest (the chat path does the
   // same); a fetch() Origin header would be dropped as a forbidden header.
   await ensureOriginRule(baseUrl);
@@ -61,7 +66,7 @@ async function fetchGeminiModels(provider: LLMProviderConfig): Promise<ModelInfo
   // catalog on one page so newer models can't fall off the unfetched tail — fine
   // here since Gemini lists far fewer than this; if it ever exceeds it we'd need
   // to follow nextPageToken.
-  const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000", {
+  const res = await fetch(`${resolveGeminiBaseUrl(provider)}/models?pageSize=1000`, {
     headers: { "x-goog-api-key": provider.api_key },
   });
   if (!res.ok) throw new Error(`Gemini error ${res.status}`);
@@ -81,7 +86,7 @@ async function fetchGeminiModels(provider: LLMProviderConfig): Promise<ModelInfo
 }
 
 async function fetchAnthropicModels(provider: LLMProviderConfig): Promise<ModelInfo[]> {
-  const res = await fetch("https://api.anthropic.com/v1/models", {
+  const res = await fetch(`${resolveAnthropicBaseUrl(provider)}/v1/models`, {
     headers: {
       "x-api-key": provider.api_key,
       "anthropic-version": "2023-06-01",

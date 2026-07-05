@@ -3,13 +3,20 @@
 import type { LLMProviderConfig } from "../settings";
 import type { LLMRequest, LLMResponse } from "./types";
 
-const BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
+export const GEMINI_DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
+
+/** Resolve the API root: user override (proxy/gateway) or the official default.
+ *  Gemini's base includes the version segment (".../v1beta"); the adapter
+ *  appends only the model/method path. */
+export function resolveGeminiBaseUrl(provider: LLMProviderConfig): string {
+  return (provider.base_url || GEMINI_DEFAULT_BASE_URL).replace(/\/+$/, "");
+}
 
 export async function callGemini(
   provider: LLMProviderConfig,
   request: LLMRequest,
 ): Promise<LLMResponse> {
-  const url = `${BASE_URL}/models/${encodeURIComponent(request.model)}:generateContent`;
+  const url = `${resolveGeminiBaseUrl(provider)}/models/${encodeURIComponent(request.model)}:generateContent`;
 
   const contents: { role: string; parts: { text: string }[] }[] = [];
   if (request.system_prompt) {

@@ -6,13 +6,18 @@ import type { LLMRequest, LLMResponse } from "./types";
 // Base URL follows the OpenAI convention: it points at the API root (including
 // the version segment, e.g. ".../v1"). We append only the endpoint path. This
 // matches what OpenAI-compatible servers (LM Studio, vLLM, …) document and show.
-const DEFAULT_BASE_URL = "https://api.openai.com/v1";
+export const OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1";
+
+// OpenRouter speaks the OpenAI protocol, so it runs through this adapter with
+// its own default root. Exported so the router and model fetcher share one
+// source of truth while still honoring a user override.
+export const OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 
 /** Normalize a provider base URL: use the value as given, only trimming
  *  trailing slashes so endpoint paths join cleanly. Shared with the model
  *  fetcher so the "/v1 in base" convention has a single source of truth. */
 export function resolveBaseUrl(provider: LLMProviderConfig): string {
-  return (provider.base_url || DEFAULT_BASE_URL).replace(/\/+$/, "");
+  return (provider.base_url || OPENAI_DEFAULT_BASE_URL).replace(/\/+$/, "");
 }
 
 /** Turn an OpenAI error body into a clear message. Surfaces the common

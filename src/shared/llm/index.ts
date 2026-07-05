@@ -2,7 +2,7 @@
 
 import type { LLMProviderConfig } from "../settings";
 import type { LLMRequest, LLMResponse } from "./types";
-import { callOpenAI } from "./openai";
+import { callOpenAI, OPENROUTER_DEFAULT_BASE_URL } from "./openai";
 import { callAnthropic } from "./anthropic";
 import { callGemini } from "./gemini";
 import { callOllama } from "./ollama";
@@ -19,7 +19,10 @@ export async function callLLM(
     case "openai-compatible":
       return callOpenAI(provider, request);
     case "openrouter":
-      return callOpenAI({ ...provider, base_url: "https://openrouter.ai/api/v1" }, request);
+      return callOpenAI(
+        { ...provider, base_url: provider.base_url || OPENROUTER_DEFAULT_BASE_URL },
+        request,
+      );
     case "ollama":
       return callOllama(provider, request);
     case "anthropic":

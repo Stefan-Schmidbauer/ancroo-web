@@ -4,6 +4,10 @@ import { ensureHostPermission } from "@/shared/host-permission";
 import { listLocalActions } from "@/shared/local-actions";
 import { fetchModels, type ModelInfo } from "@/shared/llm/models";
 import { probeModel } from "@/shared/llm";
+import { OPENAI_DEFAULT_BASE_URL, OPENROUTER_DEFAULT_BASE_URL } from "@/shared/llm/openai";
+import { ANTHROPIC_DEFAULT_BASE_URL } from "@/shared/llm/anthropic";
+import { GEMINI_DEFAULT_BASE_URL } from "@/shared/llm/gemini";
+import { OLLAMA_DEFAULT_BASE_URL } from "@/shared/llm/ollama";
 
 const PROVIDER_TYPES: { value: LLMProviderType; label: string }[] = [
   { value: "openai", label: "OpenAI" },
@@ -14,16 +18,22 @@ const PROVIDER_TYPES: { value: LLMProviderType; label: string }[] = [
   { value: "openai-compatible", label: "OpenAI-Compatible" },
 ];
 
-// Displayed API endpoints — kept in sync with the adapters' actual base URLs.
+// Displayed API endpoints — imported straight from the adapters so the
+// placeholder/list shown here can't drift from the URL a request actually hits.
 // OpenAI-style providers include the version segment ("/v1"); Anthropic and
 // Ollama use a host-root base to which the adapter appends the version path.
 const DEFAULT_BASE_URLS: Partial<Record<LLMProviderType, string>> = {
-  openai: "https://api.openai.com/v1",
-  anthropic: "https://api.anthropic.com",
-  gemini: "https://generativelanguage.googleapis.com/v1beta",
-  openrouter: "https://openrouter.ai/api/v1",
-  ollama: "http://localhost:11434",
+  openai: OPENAI_DEFAULT_BASE_URL,
+  anthropic: ANTHROPIC_DEFAULT_BASE_URL,
+  gemini: GEMINI_DEFAULT_BASE_URL,
+  openrouter: OPENROUTER_DEFAULT_BASE_URL,
+  ollama: OLLAMA_DEFAULT_BASE_URL,
 };
+
+/** Shorten a URL for the provider list so it can't push the action buttons off-row. */
+function truncateUrl(url: string, max = 30): string {
+  return url.length > max ? `${url.slice(0, max)}…` : url;
+}
 
 /**
  * Whether a provider has enough credentials to query its model list:
@@ -162,11 +172,7 @@ export function ProviderSettings({ providers, onSave }: Props) {
 
   async function handleSaveProvider() {
     if (!editing) return;
-    // Ollama doesn't require an API key
-    if (editing.type !== "ollama" && !editing.api_key.trim()) return;
-    // openai-compatible requires a base URL — without it the request silently
-    // hits api.openai.com and returns a confusing 401.
-    if (editing.type === "openai-compatible" && !editing.base_url?.trim()) return;
+    if (!providerHasCreds(editing)) return;
 
     // Request host permission for custom URLs before saving
     if (editing.base_url) {
@@ -198,8 +204,7 @@ export function ProviderSettings({ providers, onSave }: Props) {
   // fetch both confirms auth/connectivity and populates the model picker.
   async function handleTest() {
     if (!editing) return;
-    if (editing.type !== "ollama" && !editing.api_key.trim()) return;
-    if (editing.type === "openai-compatible" && !editing.base_url?.trim()) return;
+    if (!providerHasCreds(editing)) return;
     setTesting(true);
     setTestResult(null);
     setProbeResult(null);
@@ -220,23 +225,27 @@ export function ProviderSettings({ providers, onSave }: Props) {
       setAvailableModels(models);
       setVerifiedCreds(credsFingerprint(editing));
       // Drop a stale selection that the live list no longer offers, so the
-      // picker doesn't keep a model the provider can't serve.
-      if (editing.model && models.length > 0 && !models.some((m) => m.id === editing.model)) {
-        setEditing({ ...editing, model: "" });
-      }
+      // picker doesn't keep a model the provider can't serve. Functional update:
+      // the test ran async, so `editing` here is the click-time snapshot and
+      // writing it back would revert fields typed while the test was in flight.
+      setEditing((prev) =>
+        prev && prev.model && models.length > 0 && !models.some((m) => m.id === prev.model)
+          ? { ...prev, model: "" }
+          : prev,
+      );
       setTestResult("success");
     } catch (err) {
       setAvailableModels([]);
       const msg = err instanceof Error ? err.message : "Connection failed";
-      if (editing.type === "openai-compatible") {
-        // A /models route is optional for OpenAI-compatible servers, so let the
-        // user type the model name manually instead of blocking Save. A 404 means
-        // the server simply has no listing route — fall back quietly. Any other
-        // failure (auth, wrong URL, network) is a real problem: keep the manual
-        // fallback but surface the actual error instead of hiding it behind a
-        // generic "no model list" message.
+      if (editing.type === "openai-compatible" && /\b404\b/.test(msg)) {
+        // A /models route is optional for OpenAI-compatible servers: a 404 means
+        // the server answered (creds/URL are fine) but has no listing route, so
+        // count the connection as verified and let the user type the model name
+        // manually instead of blocking Save. Any other failure (auth, wrong URL,
+        // network) must NOT verify — it would unlock Save for credentials that
+        // never worked.
         setVerifiedCreds(credsFingerprint(editing));
-        setTestResult(/\b404\b/.test(msg) ? "manual" : msg);
+        setTestResult("manual");
       } else {
         setTestResult(msg);
       }
@@ -279,6 +288,10 @@ export function ProviderSettings({ providers, onSave }: Props) {
   // Editing / adding a provider
   if (editing) {
     const compatibleNeedsUrl = editing.type === "openai-compatible" && !editing.base_url?.trim();
+    // The official default endpoint for this provider type, shown as the input's
+    // placeholder. Undefined for openai-compatible, which has no default and
+    // requires an explicit URL.
+    const providerDefaultUrl = DEFAULT_BASE_URLS[editing.type];
     const hasCreds = providerHasCreds(editing);
     const credsVerified = verifiedCreds === credsFingerprint(editing);
     const baseInvalid =
@@ -298,9 +311,14 @@ export function ProviderSettings({ providers, onSave }: Props) {
               const type = (e.target as HTMLSelectElement).value as LLMProviderType;
               const label = PROVIDER_TYPES.find((t) => t.value === type)?.label ?? type;
               // Clear the model — a model from another provider type is meaningless
-              // here, and the user re-picks from the new type's live list.
-              setEditing({ ...editing, type, name: label, model: "" });
+              // here, and the user re-picks from the new type's live list. The
+              // base_url must go too: a leftover custom endpoint would keep
+              // receiving requests (and the new type's API key) while the UI
+              // shows the official default endpoint.
+              setEditing({ ...editing, type, name: label, model: "", base_url: undefined });
               setAvailableModels([]);
+              setTestResult(null);
+              setProbeResult(null);
             }}
             class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
           >
@@ -338,23 +356,25 @@ export function ProviderSettings({ providers, onSave }: Props) {
           </div>
         )}
 
-        {editing.type === "openai-compatible" || editing.type === "ollama" ? (
-          <div>
-            <label class="text-xs font-medium text-gray-700">Base URL</label>
-            <input
-              type="url"
-              value={editing.base_url ?? ""}
-              onInput={(e) =>
-                setEditing({ ...editing, base_url: (e.target as HTMLInputElement).value })
-              }
-              class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
-              placeholder={
-                editing.type === "ollama" ? "http://localhost:11434" : "http://localhost:1234/v1"
-              }
-            />
-            {editing.type === "ollama" ? (
-              <p class="text-xs text-gray-400 mt-0.5">Leave empty for localhost:11434</p>
-            ) : compatibleNeedsUrl ? (
+        {/* Every provider's endpoint is editable. Providers with an official
+            default prefill it as a placeholder (empty = use the default, so a
+            future default change reaches existing users); openai-compatible has
+            no default and requires an explicit URL. */}
+        <div>
+          <label class="text-xs font-medium text-gray-700">Base URL</label>
+          <input
+            type="url"
+            value={editing.base_url ?? ""}
+            onInput={(e) =>
+              setEditing({ ...editing, base_url: (e.target as HTMLInputElement).value })
+            }
+            class="w-full border rounded px-2 py-1.5 text-sm mt-0.5"
+            placeholder={
+              editing.type === "openai-compatible" ? "http://localhost:1234/v1" : providerDefaultUrl
+            }
+          />
+          {editing.type === "openai-compatible" ? (
+            compatibleNeedsUrl ? (
               <p class="text-xs text-amber-600 mt-0.5">
                 Required — enter your server URL (e.g. http://localhost:1234/v1).
               </p>
@@ -362,16 +382,15 @@ export function ProviderSettings({ providers, onSave }: Props) {
               <p class="text-xs text-gray-400 mt-0.5">
                 Include the version path (e.g. /v1) — the endpoint is appended automatically.
               </p>
-            )}
-          </div>
-        ) : DEFAULT_BASE_URLS[editing.type] ? (
-          <div>
-            <label class="text-xs font-medium text-gray-700">API Endpoint</label>
-            <div class="w-full border rounded px-2 py-1.5 text-sm text-gray-400 bg-gray-50 mt-0.5">
-              {DEFAULT_BASE_URLS[editing.type]}
-            </div>
-          </div>
-        ) : null}
+            )
+          ) : editing.type === "ollama" ? (
+            <p class="text-xs text-gray-400 mt-0.5">Leave empty for localhost:11434</p>
+          ) : (
+            <p class="text-xs text-gray-400 mt-0.5">
+              Leave empty for the default. Override only for a proxy or gateway.
+            </p>
+          )}
+        </div>
 
         {/* Step 1 — verify the connection, which loads the model list. */}
         <button
@@ -553,14 +572,15 @@ export function ProviderSettings({ providers, onSave }: Props) {
         .sort((a, b) => a.name.localeCompare(b.name))
         .map((p) => (
           <div key={p.id} class="flex items-center justify-between p-2 bg-white rounded-lg border">
-            <div>
+            <div class="min-w-0">
               <div class="text-sm font-medium">{p.name}</div>
+              <div class="text-xs text-gray-400">{p.type}</div>
               <div class="text-xs text-gray-400">
-                {p.type} — {p.base_url || DEFAULT_BASE_URLS[p.type] || "custom"} — ****
-                {p.api_key.slice(-4)}
+                {truncateUrl(p.base_url || DEFAULT_BASE_URLS[p.type] || "custom")}
               </div>
+              <div class="text-xs text-gray-400">****{p.api_key.slice(-4)}</div>
             </div>
-            <div class="flex gap-1">
+            <div class="flex gap-1 shrink-0">
               <button
                 onClick={() => startEdit(p)}
                 class="text-xs text-blue-500 hover:text-blue-700 px-1"

@@ -3,14 +3,20 @@
 import type { LLMProviderConfig } from "../settings";
 import type { LLMRequest, LLMResponse } from "./types";
 
-const BASE_URL = "https://api.anthropic.com";
+export const ANTHROPIC_DEFAULT_BASE_URL = "https://api.anthropic.com";
 const API_VERSION = "2023-06-01";
+
+/** Resolve the API root: user override (proxy/gateway) or the official default.
+ *  Anthropic's base is the host root; the adapter appends the version path. */
+export function resolveAnthropicBaseUrl(provider: LLMProviderConfig): string {
+  return (provider.base_url || ANTHROPIC_DEFAULT_BASE_URL).replace(/\/+$/, "");
+}
 
 export async function callAnthropic(
   provider: LLMProviderConfig,
   request: LLMRequest,
 ): Promise<LLMResponse> {
-  const url = `${BASE_URL}/v1/messages`;
+  const url = `${resolveAnthropicBaseUrl(provider)}/v1/messages`;
 
   const body: Record<string, unknown> = {
     model: request.model,
