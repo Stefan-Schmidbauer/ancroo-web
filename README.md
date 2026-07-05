@@ -8,6 +8,8 @@
 [![pnpm](https://img.shields.io/badge/pnpm-F69220?logo=pnpm&logoColor=white)](https://pnpm.io/)
 [![Chrome Extension](https://img.shields.io/badge/Chrome_Extension-MV3-4285F4?logo=googlechrome&logoColor=white)](https://developer.chrome.com/docs/extensions/)
 [![Live Demo](https://img.shields.io/badge/Live_Demo-ancroo.github.io-2563EB?logo=googlechrome&logoColor=white)](https://ancroo.github.io/ancroo-web/)
+[![Overview Video](https://img.shields.io/badge/Watch-Overview-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=2czqRFo1qpU)
+[![Setup Video](https://img.shields.io/badge/Watch-Setup-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=ZObrvL4vdXo)
 
 **Point. Prompt. Done.**
 
@@ -16,6 +18,8 @@ AI Prompt Launcher for your Browser. Point at anything on a page, run an AI prom
 Manifest V3 browser extension built with Preact and TypeScript. Calls LLM providers directly — no server or account needed.
 
 ![Ancroo](assets/screenshots/ancroo.png)
+
+> 📺 **See Ancroo in action:** watch the [overview video](https://www.youtube.com/watch?v=2czqRFo1qpU) for a quick tour of how it works.
 
 ## Features
 
@@ -36,6 +40,8 @@ Manifest V3 browser extension built with Preact and TypeScript. Calls LLM provid
 ![Ancroo actions](assets/screenshots/new-action-sidepanel.png)
 
 ## Install
+
+> 📺 **New to Ancroo?** The [setup walkthrough](https://www.youtube.com/watch?v=ZObrvL4vdXo) covers installing the extension and connecting your first LLM provider.
 
 ### Chrome Web Store (recommended)
 
