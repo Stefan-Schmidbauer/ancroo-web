@@ -1,5 +1,12 @@
 import { useState, useEffect, useRef } from "preact/hooks";
-import { getSettings, saveSettings, type LLMProviderConfig } from "@/shared/settings";
+import {
+  getSettings,
+  saveSettings,
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  MIN_REQUEST_TIMEOUT_MS,
+  MAX_REQUEST_TIMEOUT_MS,
+  type LLMProviderConfig,
+} from "@/shared/settings";
 import { exportBackup, importBackup } from "@/shared/backup";
 import { ensureHostPermissions } from "@/shared/host-permission";
 import { ProviderSettings } from "./ProviderSettings";
@@ -12,16 +19,37 @@ export function Settings({ onClose }: Props) {
   const [providers, setProviders] = useState<LLMProviderConfig[]>([]);
   const [includeKeys, setIncludeKeys] = useState(false);
   const [backupStatus, setBackupStatus] = useState<{ msg: string; ok: boolean } | null>(null);
+  // Timeout is edited in whole seconds for readability; stored as ms.
+  const [timeoutSec, setTimeoutSec] = useState(
+    Math.round(DEFAULT_REQUEST_TIMEOUT_MS / 1000).toString(),
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    getSettings().then((s) => setProviders(s.llm_providers));
+    getSettings().then((s) => {
+      setProviders(s.llm_providers);
+      setTimeoutSec(
+        Math.round((s.request_timeout_ms ?? DEFAULT_REQUEST_TIMEOUT_MS) / 1000).toString(),
+      );
+    });
   }, []);
 
   async function handleSaveProviders(updated: LLMProviderConfig[]) {
     setProviders(updated);
     const current = await getSettings();
     await saveSettings({ ...current, llm_providers: updated });
+  }
+
+  // Clamp to the allowed range and persist on blur so a half-typed value never
+  // reaches storage. A non-numeric entry falls back to the default.
+  async function handleSaveTimeout() {
+    const parsed = Number.parseInt(timeoutSec, 10);
+    const ms = Number.isFinite(parsed)
+      ? Math.min(Math.max(parsed * 1000, MIN_REQUEST_TIMEOUT_MS), MAX_REQUEST_TIMEOUT_MS)
+      : DEFAULT_REQUEST_TIMEOUT_MS;
+    setTimeoutSec(Math.round(ms / 1000).toString());
+    const current = await getSettings();
+    await saveSettings({ ...current, request_timeout_ms: ms });
   }
 
   async function handleExport() {
@@ -78,6 +106,29 @@ export function Settings({ onClose }: Props) {
 
       <div class="flex-1 overflow-y-auto p-3">
         <ProviderSettings providers={providers} onSave={handleSaveProviders} />
+
+        <div class="mt-6 pt-4 border-t">
+          <p class="text-xs font-semibold text-gray-500 uppercase mb-3">Request timeout</p>
+          <div class="flex items-center gap-2">
+            <input
+              type="number"
+              min={Math.round(MIN_REQUEST_TIMEOUT_MS / 1000)}
+              max={Math.round(MAX_REQUEST_TIMEOUT_MS / 1000)}
+              value={timeoutSec}
+              onInput={(e) => setTimeoutSec((e.target as HTMLInputElement).value)}
+              onBlur={handleSaveTimeout}
+              class="w-24 p-2 bg-white border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-300"
+            />
+            <span class="text-xs text-gray-500">
+              seconds ({Math.round(MIN_REQUEST_TIMEOUT_MS / 1000)}–
+              {Math.round(MAX_REQUEST_TIMEOUT_MS / 1000)})
+            </span>
+          </div>
+          <p class="text-xs text-gray-400 mt-1.5">
+            How long to wait for an AI response before giving up. Raise this for slow reasoning
+            models or local Ollama. You can cancel a running request any time.
+          </p>
+        </div>
 
         <div class="mt-6 pt-4 border-t">
           <p class="text-xs font-semibold text-gray-500 uppercase mb-3">Backup</p>

@@ -1,7 +1,12 @@
 import type { LocalAction } from "./types";
 import type { LLMProviderConfig } from "./settings";
 import { listLocalActions, replaceAllLocalActions } from "./local-actions";
-import { getSettings, saveSettings } from "./settings";
+import {
+  getSettings,
+  saveSettings,
+  MIN_REQUEST_TIMEOUT_MS,
+  MAX_REQUEST_TIMEOUT_MS,
+} from "./settings";
 import { listCategories, replaceAllCategories } from "./local-categories";
 import type { Category } from "./local-categories";
 
@@ -11,6 +16,8 @@ export interface BackupData {
   actions: LocalAction[];
   providers: LLMProviderConfig[];
   categories?: Category[];
+  /** Optional — absent in backups exported before the timeout was configurable. */
+  request_timeout_ms?: number;
 }
 
 const PROVIDER_TYPES: ReadonlySet<LLMProviderConfig["type"]> = new Set([
@@ -28,6 +35,7 @@ export function validateBackup(data: unknown): data is BackupData {
   if (d.version !== "1") return false;
   if (!Array.isArray(d.actions)) return false;
   if (!Array.isArray(d.providers)) return false;
+  const seenSlugs = new Set<string>();
   for (const w of d.actions) {
     if (!w || typeof w !== "object") return false;
     const wf = w as Record<string, unknown>;
@@ -35,6 +43,18 @@ export function validateBackup(data: unknown): data is BackupData {
       typeof wf.slug !== "string" ||
       typeof wf.name !== "string" ||
       typeof wf.prompt_template !== "string"
+    )
+      return false;
+    // The CRUD layer upserts and deletes by slug — duplicates would make an
+    // edit silently overwrite the other action and a delete remove both.
+    if (seenSlugs.has(wf.slug)) return false;
+    seenSlugs.add(wf.slug);
+    // Hotkey bindings are rebuilt from this field; a non-string value would
+    // crash the refresh and silently kill all hotkeys.
+    if (
+      wf.default_hotkey !== undefined &&
+      wf.default_hotkey !== null &&
+      typeof wf.default_hotkey !== "string"
     )
       return false;
   }
@@ -46,6 +66,8 @@ export function validateBackup(data: unknown): data is BackupData {
     if (!PROVIDER_TYPES.has(pr.type as LLMProviderConfig["type"])) return false;
     if (pr.base_url !== undefined && typeof pr.base_url !== "string") return false;
   }
+  // Optional — reject only a wrong type; range is enforced by clamping on import.
+  if (d.request_timeout_ms !== undefined && typeof d.request_timeout_ms !== "number") return false;
   return true;
 }
 
@@ -64,6 +86,7 @@ export async function exportBackup(includeApiKeys: boolean): Promise<void> {
     actions,
     providers,
     categories,
+    request_timeout_ms: settings.request_timeout_ms,
   };
 
   const json = JSON.stringify(data, null, 2);
@@ -114,8 +137,11 @@ export async function importBackup(file: File): Promise<{ actions: number; provi
     await replaceAllCategories(validCategories);
   }
 
+  // Fold provider merge and the (optional) timeout into a single settings write.
+  const current = await getSettings();
+  let next = current;
+
   if (parsed.providers.length > 0) {
-    const current = await getSettings();
     const existingById = new Map(current.llm_providers.map((p) => [p.id, p]));
     for (const imported of parsed.providers) {
       const existing = existingById.get(imported.id);
@@ -124,8 +150,22 @@ export async function importBackup(file: File): Promise<{ actions: number; provi
         existing && imported.api_key === "" ? { ...imported, api_key: existing.api_key } : imported,
       );
     }
-    await saveSettings({ ...current, llm_providers: Array.from(existingById.values()) });
+    next = { ...next, llm_providers: Array.from(existingById.values()) };
   }
+
+  // Absent in pre-timeout backups — leave the current value untouched then.
+  // Clamp so a hand-edited or out-of-range value can't slip past the UI bounds.
+  if (typeof parsed.request_timeout_ms === "number") {
+    next = {
+      ...next,
+      request_timeout_ms: Math.min(
+        Math.max(parsed.request_timeout_ms, MIN_REQUEST_TIMEOUT_MS),
+        MAX_REQUEST_TIMEOUT_MS,
+      ),
+    };
+  }
+
+  if (next !== current) await saveSettings(next);
 
   return { actions: parsed.actions.length, providers: parsed.providers.length };
 }

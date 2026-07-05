@@ -26,7 +26,12 @@ import { ActionEditor } from "./ActionEditor";
 import { Settings } from "./Settings";
 import type { LocalAction } from "@/shared/types";
 import type { LLMProviderConfig } from "@/shared/settings";
-import { listLocalActions, saveLocalAction, deleteLocalAction } from "@/shared/local-actions";
+import {
+  listLocalActions,
+  saveLocalAction,
+  deleteLocalAction,
+  replaceAllLocalActions,
+} from "@/shared/local-actions";
 import {
   listCategories,
   saveCategory,
@@ -37,6 +42,18 @@ import type { Category } from "@/shared/local-categories";
 import { CategoryManager } from "./CategoryManager";
 import { Toast } from "./Toast";
 import type { ToastState, ToastVariant } from "./Toast";
+
+/** History entries as stored — possibly still carrying pre-v1.6.0 field names. */
+type RawHistoryEntry = HistoryEntry & { workflow_slug?: string; workflow_name?: string };
+
+/** Map pre-v1.6.0 `workflow_*` field names so old entries still render a title. */
+function migrateHistory(raw: RawHistoryEntry[]): HistoryEntry[] {
+  return raw.map((e) => ({
+    ...e,
+    action_slug: e.action_slug ?? e.workflow_slug ?? "",
+    action_name: e.action_name ?? e.workflow_name ?? "",
+  }));
+}
 
 export function App() {
   const [setupDone, setSetupDone] = useState<boolean | null>(null);
@@ -115,19 +132,38 @@ export function App() {
   // second hotkey press in the same tick from starting an overlapping run, so a
   // ref gives the immediate check that blocks concurrent executions.
   const executingRef = useRef(false);
+  // Controls the in-flight LLM request so a "Cancel" button can abort it.
+  // `cancelledRef` distinguishes a user cancel from a real error/timeout so the
+  // toast messaging differs.
+  const abortRef = useRef<AbortController | null>(null);
+  const cancelledRef = useRef(false);
   // Last hotkey trigger we ran, to avoid handling the same queued trigger twice
   // (load() on mount vs. the storage.onChanged listener).
   const lastTriggerNonceRef = useRef<number | null>(null);
+  // A trigger that arrived before loadData populated the actions — parked here
+  // and run by the sync effect below once the list is in, instead of being
+  // silently dropped (the trigger key is already consumed at that point).
+  const pendingSlugRef = useRef<string | null>(null);
   useEffect(() => {
     actionsRef.current = actions;
     handleExecuteRef.current = handleExecute;
+    if (pendingSlugRef.current && actions.length > 0) {
+      const slug = pendingSlugRef.current;
+      pendingSlugRef.current = null;
+      const wf = actions.find((a) => a.slug === slug);
+      if (wf) void handleExecuteRef.current(wf);
+    }
   });
 
   // Route a queued hotkey to the orchestrator (handleExecute shows the manual
   // input UI when needed, otherwise runs the action).
   const runActionSlug = useRef((slug: string) => {
     const wf = actionsRef.current.find((w) => w.slug === slug);
-    if (wf) void handleExecuteRef.current(wf);
+    if (wf) {
+      void handleExecuteRef.current(wf);
+    } else if (actionsRef.current.length === 0) {
+      pendingSlugRef.current = slug;
+    }
   }).current;
 
   // Sync history when background script adds entries, and pick up hotkey
@@ -142,12 +178,26 @@ export function App() {
       // no-op). loadData() only reads the trigger once on mount, so the
       // already-open case must react to the storage change.
       if (area === "session" && changes.pendingActionTrigger?.newValue) {
-        const trigger = changes.pendingActionTrigger.newValue as { slug: string; nonce: number };
-        void chrome.storage.session.remove("pendingActionTrigger");
-        if (trigger.nonce !== lastTriggerNonceRef.current) {
-          lastTriggerNonceRef.current = trigger.nonce;
-          runActionSlug(trigger.slug);
-        }
+        const trigger = changes.pendingActionTrigger.newValue as {
+          slug: string;
+          nonce: number;
+          windowId?: number | null;
+        };
+        void (async () => {
+          // Side panels are per-window and every one of them sees this change;
+          // only the panel in the hotkey's window may run the action (and
+          // consume the key — a foreign panel removing it would starve a panel
+          // that is still opening in the target window).
+          if (trigger.windowId != null) {
+            const win = await chrome.windows.getCurrent();
+            if (win.id !== trigger.windowId) return;
+          }
+          void chrome.storage.session.remove("pendingActionTrigger");
+          if (trigger.nonce !== lastTriggerNonceRef.current) {
+            lastTriggerNonceRef.current = trigger.nonce;
+            runActionSlug(trigger.slug);
+          }
+        })();
       }
     };
     chrome.storage.onChanged.addListener(listener);
@@ -208,31 +258,18 @@ export function App() {
     try {
       setError(null);
 
-      const settings = await getSettings();
-      setLlmProviders(settings.llm_providers);
-      setCategories(await listCategories());
-
-      const [actionList, stored, session] = await Promise.all([
+      const [settings, categoryList, actionList, stored, session] = await Promise.all([
+        getSettings(),
+        listCategories(),
         listActionsUnified(),
         chrome.storage.local.get("history"),
         chrome.storage.session.get("pendingActionTrigger"),
       ]);
 
+      setLlmProviders(settings.llm_providers);
+      setCategories(categoryList);
       setActions(actionList);
-      // Pre-v1.6.0 history entries used `workflow_slug`/`workflow_name`. Map the
-      // old field names so existing entries still render a title after update.
-      const rawHistory =
-        (stored.history as (HistoryEntry & {
-          workflow_slug?: string;
-          workflow_name?: string;
-        })[]) ?? [];
-      setHistory(
-        rawHistory.map((e) => ({
-          ...e,
-          action_slug: e.action_slug ?? e.workflow_slug ?? "",
-          action_name: e.action_name ?? e.workflow_name ?? "",
-        })),
-      );
+      setHistory(migrateHistory((stored.history as RawHistoryEntry[] | undefined) ?? []));
 
       // Refresh hotkey bindings for the content script + panel keydown listener.
       chrome.runtime.sendMessage({ type: "REFRESH_HOTKEYS" }).catch(() => {});
@@ -240,7 +277,17 @@ export function App() {
       // A hotkey pressed while the panel was closed queued a trigger that we
       // pick up here on mount. Defer so component state is settled first.
       if (session.pendingActionTrigger) {
-        const trigger = session.pendingActionTrigger as { slug: string; nonce: number };
+        const trigger = session.pendingActionTrigger as {
+          slug: string;
+          nonce: number;
+          windowId?: number | null;
+        };
+        // Only the panel in the hotkey's window may consume the trigger — this
+        // panel may be in another window that merely happened to (re)load.
+        if (trigger.windowId != null) {
+          const win = await chrome.windows.getCurrent();
+          if (win.id !== trigger.windowId) return;
+        }
         await chrome.storage.session.remove("pendingActionTrigger");
         // nonce is the press timestamp. Ignore a stale trigger that was never
         // consumed (e.g. sidePanel.open() failed) so it can't fire on a later
@@ -266,10 +313,13 @@ export function App() {
   }
 
   async function handleDeleteCategory(value: string) {
+    // One read + one write — saveLocalAction in a loop would re-read and
+    // rewrite the whole stored list once per affected action.
     const all = await listLocalActions();
-    for (const w of all.filter((w) => w.category === value)) {
-      await saveLocalAction({ ...w, category: null, category_icon: null });
-    }
+    const updated = all.map((w) =>
+      w.category === value ? { ...w, category: null, category_icon: null } : w,
+    );
+    await replaceAllLocalActions(updated);
     await deleteCategory(value);
     setCategories(await listCategories());
     await loadData();
@@ -404,6 +454,9 @@ export function App() {
     // later write clobbers the earlier entry, and their toasts collide.
     if (executingRef.current) return;
     executingRef.current = true;
+    cancelledRef.current = false;
+    const controller = new AbortController();
+    abortRef.current = controller;
     setExecuting(action.slug);
     try {
       const [tab] = await chrome.tabs.query({
@@ -458,7 +511,15 @@ export function App() {
       // success/error toast, or cleared on the side-panel-only / failure paths.
       showToast(`${action.name}...`, "processing");
 
-      const result = await executeActionUnified(action, inputData);
+      const result = await executeActionUnified(action, inputData, controller.signal);
+
+      // User cancelled mid-flight: skip the (misleading "timed out") error toast
+      // and the failed history entry, and give neutral feedback instead.
+      if (cancelledRef.current) {
+        hideToast();
+        showToast(`${action.name} cancelled.`, "warning");
+        return;
+      }
 
       const entry: HistoryEntry = {
         id: result.execution_id,
@@ -470,7 +531,13 @@ export function App() {
         success: result.result?.success ?? false,
         timestamp: Date.now(),
       };
-      const newHistory = [entry, ...history].slice(0, 50);
+      // Re-read the stored list instead of using the render-time closure:
+      // another panel instance (side panels are per-window) may have written
+      // history while the LLM call was in flight, and the stale closure would
+      // clobber its entry.
+      const stored = await chrome.storage.local.get("history");
+      const currentHistory = migrateHistory((stored.history as RawHistoryEntry[] | undefined) ?? []);
+      const newHistory = [entry, ...currentHistory].slice(0, 50);
       setHistory(newHistory);
       await chrome.storage.local.set({ history: newHistory });
 
@@ -506,8 +573,15 @@ export function App() {
       showToast(friendlyError(err instanceof Error ? err.message : String(err)), "error");
     } finally {
       executingRef.current = false;
+      abortRef.current = null;
       setExecuting(null);
     }
+  }
+
+  /** Abort the in-flight LLM request (triggered by a "Cancel" button). */
+  function handleCancelExecution() {
+    cancelledRef.current = true;
+    abortRef.current?.abort();
   }
 
   async function handleCopyResult() {
@@ -682,6 +756,12 @@ export function App() {
               <div class="flex items-center gap-2 text-xs text-amber-600 py-2">
                 <span class="w-3 h-3 border-2 border-amber-600 border-t-transparent rounded-full animate-spin" />
                 <span>Processing with AI...</span>
+                <button
+                  onClick={handleCancelExecution}
+                  class="ml-auto text-gray-400 hover:text-gray-600"
+                >
+                  Cancel
+                </button>
               </div>
             ) : (
               <>
@@ -863,6 +943,16 @@ export function App() {
                             <div class="flex items-center gap-2 text-xs text-amber-600 mt-1">
                               <span class="w-3 h-3 border-2 border-amber-600 border-t-transparent rounded-full animate-spin" />
                               <span>Processing with AI...</span>
+                              <span
+                                role="button"
+                                class="ml-auto text-gray-400 hover:text-gray-600"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCancelExecution();
+                                }}
+                              >
+                                Cancel
+                              </span>
                             </div>
                           )}
                         </button>
@@ -884,6 +974,12 @@ export function App() {
                               <div class="flex items-center gap-2 text-xs text-amber-600 mt-1">
                                 <span class="w-3 h-3 border-2 border-amber-600 border-t-transparent rounded-full animate-spin" />
                                 <span>Processing with AI...</span>
+                                <button
+                                  onClick={handleCancelExecution}
+                                  class="ml-auto text-gray-400 hover:text-gray-600"
+                                >
+                                  Cancel
+                                </button>
                               </div>
                             )}
                             {!isExecuting && (

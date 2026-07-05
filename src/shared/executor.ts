@@ -1,19 +1,23 @@
 /** Action executor — calls LLM directly (no backend). */
 
 import type { InputDataPacket, ExecuteActionResponse, LocalAction, Action } from "./types";
-import { getSettings } from "./settings";
+import { getSettings, DEFAULT_REQUEST_TIMEOUT_MS, MAX_REQUEST_TIMEOUT_MS } from "./settings";
 import { getLocalAction } from "./local-actions";
 import { renderTemplate } from "./template-renderer";
 import { callLLM } from "./llm";
 import { hasHostPermission } from "./host-permission";
 
-/** Timeout for direct LLM calls (60 seconds). */
-const DIRECT_LLM_TIMEOUT_MS = 60_000;
-
-/** Execute a action directly against an LLM provider. */
+/**
+ * Execute a action directly against an LLM provider.
+ *
+ * @param externalSignal Optional caller-owned signal to cancel the request
+ *   (e.g. a "Cancel" button). It is combined with the configurable request
+ *   timeout — whichever fires first aborts the call.
+ */
 export async function executeActionUnified(
   action: Action,
   inputData: InputDataPacket,
+  externalSignal?: AbortSignal,
 ): Promise<ExecuteActionResponse> {
   const start = performance.now();
   const executionId = crypto.randomUUID();
@@ -64,8 +68,17 @@ export async function executeActionUnified(
   try {
     const userPrompt = renderTemplate(local.prompt_template, inputData);
 
+    const timeoutMs = settings.request_timeout_ms ?? DEFAULT_REQUEST_TIMEOUT_MS;
+
+    // Combine the request timeout with the caller's optional cancel signal:
+    // either one aborting the shared controller stops the LLM call.
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), DIRECT_LLM_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const forwardAbort = () => controller.abort();
+    if (externalSignal) {
+      if (externalSignal.aborted) controller.abort();
+      else externalSignal.addEventListener("abort", forwardAbort, { once: true });
+    }
 
     let response;
     try {
@@ -79,6 +92,7 @@ export async function executeActionUnified(
       });
     } finally {
       clearTimeout(timeout);
+      externalSignal?.removeEventListener("abort", forwardAbort);
     }
 
     return {
@@ -101,7 +115,11 @@ export async function executeActionUnified(
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return errorResult(executionId, start, friendlyDirectError(msg));
+    // Only suggest raising the timeout if there's still headroom — pointing a
+    // user who's already at the maximum at Settings would be a dead end.
+    const canRaiseTimeout =
+      (settings.request_timeout_ms ?? DEFAULT_REQUEST_TIMEOUT_MS) < MAX_REQUEST_TIMEOUT_MS;
+    return errorResult(executionId, start, friendlyDirectError(msg, canRaiseTimeout));
   }
 }
 
@@ -122,11 +140,13 @@ function errorResult(executionId: string, start: number, error: string): Execute
 }
 
 /** Map raw API errors to user-friendly messages. */
-function friendlyDirectError(msg: string): string {
+function friendlyDirectError(msg: string, canRaiseTimeout: boolean): string {
   const lower = msg.toLowerCase();
 
   if (lower.includes("abort") || lower.includes("timed out")) {
-    return "The AI model took too long to respond. Try a shorter input or a faster model.";
+    return canRaiseTimeout
+      ? "The AI model took too long to respond. Try a shorter input, a faster model, or raise the request timeout in Settings."
+      : "The AI model took too long to respond. Try a shorter input or a faster model.";
   }
   // Auth and credit problems are checked before "not found": providers (e.g.
   // OpenRouter) often phrase a revoked key or empty balance with wording that
