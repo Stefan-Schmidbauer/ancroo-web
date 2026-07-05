@@ -23,7 +23,7 @@ both the dashboard and this file in the same change.
 
 ## `storage`
 
-**Code:** `chrome.storage.local` throughout (`src/background/service-worker.ts`, `src/shared/local-actions.ts`, history in `service-worker.ts:281`)
+**Code:** `chrome.storage.local` throughout (`src/background/service-worker.ts`, `src/shared/local-actions.ts`, execution history in `src/sidepanel/App.tsx:542`)
 
 > Stores all user data locally in chrome.storage.local: extension settings, LLM provider configuration, API keys, action definitions, hotkey bindings, and execution history. No data is synced or sent to external servers by the extension itself.
 
@@ -37,13 +37,13 @@ both the dashboard and this file in the same change.
 
 ## `clipboardWrite`
 
-**Code:** `copy_to_clipboard` action (`src/shared/types.ts:64`), `src/content/text-inserter.ts:211`
+**Code:** `copy_to_clipboard` action (`src/shared/types.ts:64`), `src/content/text-inserter.ts:210`
 
 > Actions can copy results to the clipboard as an output type. When an action is configured with the "copy_to_clipboard" output, the AI-processed result is written to the clipboard so the user can paste it elsewhere.
 
 ## `downloads`
 
-**Code:** backup export only — `src/shared/backup.ts:68` (`chrome.downloads.download(...)`)
+**Code:** backup export only — `src/shared/backup.ts:97` (`chrome.downloads.download(...)`)
 
 > Used only by the backup feature. When the user clicks Export in settings, the extension serializes their actions, categories, and provider settings to a JSON file and saves it via chrome.downloads.download(). Downloads are triggered only on explicit user action; no remote content is downloaded.
 
@@ -51,7 +51,7 @@ both the dashboard and this file in the same change.
 
 ## `declarativeNetRequestWithHostAccess`
 
-**Code:** `src/shared/llm/ollama.ts:15-24` (MODIFY_HEADERS rule overriding `Origin`)
+**Code:** `src/shared/llm/ollama.ts:37-54` (MODIFY_HEADERS rule overriding `Origin`)
 
 > Required to override the Origin request header for local Ollama instances. Ollama's built-in CORS policy rejects browser requests by default. This permission allows the extension to modify the Origin header so users can connect to their local Ollama server without disabling Ollama's security settings.
 
