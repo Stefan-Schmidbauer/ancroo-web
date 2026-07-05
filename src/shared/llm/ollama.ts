@@ -8,8 +8,20 @@
 import type { LLMProviderConfig } from "../settings";
 import type { LLMRequest, LLMResponse } from "./types";
 
-const DEFAULT_BASE_URL = "http://localhost:11434";
-const OLLAMA_RULE_ID = 9999;
+export const OLLAMA_DEFAULT_BASE_URL = "http://localhost:11434";
+/** Single rule ID used before per-endpoint rules; removed once on next update. */
+const LEGACY_RULE_ID = 9999;
+const RULE_ID_BASE = 9900;
+
+/** Stable per-endpoint rule ID. One shared ID would let a concurrent call for
+ *  a second Ollama provider (e.g. a settings model-list fetch during a running
+ *  action) replace the Origin override out from under an in-flight request to
+ *  the first endpoint, which then 403s. */
+function ruleIdFor(baseUrl: string): number {
+  let hash = 0;
+  for (let i = 0; i < baseUrl.length; i++) hash = (hash * 31 + baseUrl.charCodeAt(i)) | 0;
+  return RULE_ID_BASE + (Math.abs(hash) % 99);
+}
 
 /** Ensure a declarativeNetRequest rule is active that overrides Origin for this Ollama URL.
  *  Exported so the model-list fetch (/api/tags) gets the same Origin override as the
@@ -17,8 +29,9 @@ const OLLAMA_RULE_ID = 9999;
  *  browser (forbidden header). */
 export async function ensureOriginRule(baseUrl: string): Promise<void> {
   try {
+    const ruleId = ruleIdFor(baseUrl);
     const rule: chrome.declarativeNetRequest.Rule = {
-      id: OLLAMA_RULE_ID,
+      id: ruleId,
       priority: 1,
       action: {
         type: chrome.declarativeNetRequest.RuleActionType.MODIFY_HEADERS,
@@ -37,7 +50,7 @@ export async function ensureOriginRule(baseUrl: string): Promise<void> {
     };
 
     await chrome.declarativeNetRequest.updateDynamicRules({
-      removeRuleIds: [OLLAMA_RULE_ID],
+      removeRuleIds: [ruleId, LEGACY_RULE_ID],
       addRules: [rule],
     });
   } catch (err) {
@@ -53,7 +66,7 @@ export async function callOllama(
   provider: LLMProviderConfig,
   request: LLMRequest,
 ): Promise<LLMResponse> {
-  const baseUrl = (provider.base_url || DEFAULT_BASE_URL).replace(/\/+$/, "");
+  const baseUrl = (provider.base_url || OLLAMA_DEFAULT_BASE_URL).replace(/\/+$/, "");
   const url = `${baseUrl}/v1/chat/completions`;
 
   // Register the Origin override rule before making the request

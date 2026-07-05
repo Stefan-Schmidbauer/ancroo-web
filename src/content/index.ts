@@ -3,6 +3,20 @@ import { matchesEvent, HOTKEY_STORAGE_KEY } from "@/shared/hotkeys";
 import type { HotkeyBinding } from "@/shared/types";
 import { smartInsertText, smartInsertBefore, smartInsertAfter } from "./text-inserter";
 
+// --- Injection guard ---
+// This script can arrive twice in the same isolated world: once via the
+// manifest declaration and once programmatically (sendToTab's inject-on-failure
+// retry, or the onInstalled re-injection). Two live copies would double-handle
+// every message — INSERT_TEXT inserts the result twice, each hotkey press fires
+// twice. A boolean flag can't tell a live copy from an orphaned one (after an
+// extension reload the old copy's flag would block the fresh injection), so
+// each injection claims a unique token and older copies detect the takeover
+// and disable themselves.
+const injectionToken = Symbol("ancroo-content-script");
+const sharedWindow = window as typeof window & { __ancrooContentScript?: symbol };
+sharedWindow.__ancrooContentScript = injectionToken;
+const isCurrentInjection = (): boolean => sharedWindow.__ancrooContentScript === injectionToken;
+
 // --- Selection helpers ---
 // window.getSelection() does NOT return text selected inside <textarea> or
 // <input> elements, so we track the last focused field and read its selection
@@ -47,39 +61,54 @@ function getInputSelection(): string {
 let hotkeyBindings: HotkeyBinding[] = [];
 
 // Load initial bindings from session storage.
-// If empty, fall back to persistent local storage (survives browser restarts).
-// If still empty, ask the background to refresh from the server.
+// If empty (or session storage rejects — it does when this script runs before
+// the freshly started service worker has granted access via setAccessLevel),
+// fall back to persistent local storage (survives browser restarts).
+// If still empty, ask the background to refresh from local actions.
 // Wrapped in try-catch to gracefully handle orphaned content scripts
 // ("Extension context invalidated" after extension reload).
+async function loadInitialBindings(): Promise<void> {
+  let fromSession: HotkeyBinding[] = [];
+  try {
+    const data = await chrome.storage.session.get(HOTKEY_STORAGE_KEY);
+    fromSession = (data[HOTKEY_STORAGE_KEY] as HotkeyBinding[] | undefined) ?? [];
+  } catch {
+    // Access not granted yet — continue with the local-storage fallback.
+  }
+  hotkeyBindings = fromSession;
+  if (hotkeyBindings.length === 0) {
+    const local = await chrome.storage.local.get(HOTKEY_STORAGE_KEY);
+    hotkeyBindings = (local[HOTKEY_STORAGE_KEY] as HotkeyBinding[] | undefined) ?? [];
+    if (hotkeyBindings.length > 0) {
+      await chrome.storage.session.set({ [HOTKEY_STORAGE_KEY]: hotkeyBindings }).catch(() => {});
+    } else {
+      chrome.runtime.sendMessage({ type: "REFRESH_HOTKEYS" });
+    }
+  }
+}
 try {
-  chrome.storage.session
-    .get(HOTKEY_STORAGE_KEY)
-    .then(async (data) => {
-      hotkeyBindings = (data[HOTKEY_STORAGE_KEY] as HotkeyBinding[] | undefined) ?? [];
-      if (hotkeyBindings.length === 0) {
-        const local = await chrome.storage.local.get(HOTKEY_STORAGE_KEY);
-        hotkeyBindings = (local[HOTKEY_STORAGE_KEY] as HotkeyBinding[] | undefined) ?? [];
-        if (hotkeyBindings.length > 0) {
-          await chrome.storage.session.set({ [HOTKEY_STORAGE_KEY]: hotkeyBindings });
-        } else {
-          chrome.runtime.sendMessage({ type: "REFRESH_HOTKEYS" });
-        }
-      }
-    })
-    .catch(() => {});
+  loadInitialBindings().catch(() => {});
 } catch {
   // Orphaned content script — silently ignore
 }
 
-// Stay in sync when background updates the bindings
-chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === "session" && changes[HOTKEY_STORAGE_KEY]) {
+// Stay in sync when background updates the bindings. Area-scoped listener:
+// the generic chrome.storage.onChanged would deliver every local-area write
+// (including the full history payload) to every tab just to be discarded.
+chrome.storage.session.onChanged.addListener((changes) => {
+  if (!isCurrentInjection()) return;
+  if (changes[HOTKEY_STORAGE_KEY]) {
     hotkeyBindings = (changes[HOTKEY_STORAGE_KEY].newValue as HotkeyBinding[]) ?? [];
   }
 });
 
 // Listen for keyboard shortcuts (capture phase to intercept before page handlers)
 function hotkeyHandler(event: KeyboardEvent): void {
+  // A newer injection took over — retire this copy's listener.
+  if (!isCurrentInjection()) {
+    document.removeEventListener("keydown", hotkeyHandler, true);
+    return;
+  }
   // Skip if no modifier keys are pressed — all hotkeys require at least one
   if (!event.ctrlKey && !event.metaKey && !event.altKey) return;
   if (hotkeyBindings.length === 0) return;
@@ -108,6 +137,10 @@ document.addEventListener("keydown", hotkeyHandler, true);
 
 // Listen for messages from the background script
 chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendResponse) => {
+  // A newer injection took over — let its listener answer instead.
+  if (!isCurrentInjection()) {
+    return false;
+  }
   // Only accept messages from our own extension
   if (sender.id !== chrome.runtime.id) {
     return false;

@@ -21,8 +21,18 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
     // Queue the action for the side panel to pick up. The nonce makes the
     // storage value change on every press, so an already-open panel reacts via
     // storage.onChanged even when the same hotkey is pressed twice in a row.
+    // windowId scopes the trigger: side panels are per-window and all of them
+    // see the storage change, but only the panel in the hotkey's window may
+    // run the action — otherwise every open panel would execute it against
+    // its own window's active tab.
     chrome.storage.session
-      .set({ pendingActionTrigger: { slug: msg.actionSlug, nonce: Date.now() } })
+      .set({
+        pendingActionTrigger: {
+          slug: msg.actionSlug,
+          nonce: Date.now(),
+          windowId: sender.tab?.windowId ?? null,
+        },
+      })
       .catch(() => {});
     return false;
   }
@@ -46,12 +56,16 @@ chrome.action.onClicked.addListener((tab) => {
 });
 
 // Refresh hotkeys and re-inject content scripts on install/update
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener((details) => {
   refreshHotkeyBindings(3).catch(() => {});
 
   // Re-inject content scripts into existing tabs so hotkeys work immediately
-  // after extension reload/update (old content scripts become orphaned).
-  reinjectContentScripts();
+  // after extension install/update (old content scripts become orphaned).
+  // Skip chrome_update/browser_update: restored tabs get the manifest-injected
+  // script anyway, so re-injecting would only add a redundant second copy.
+  if (details.reason === "install" || details.reason === "update") {
+    reinjectContentScripts();
+  }
 });
 
 // Refresh hotkeys on browser startup (session storage is cleared on restart)

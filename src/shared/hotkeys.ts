@@ -8,7 +8,9 @@ export const HOTKEY_STORAGE_KEY = "hotkeyBindings";
  * Returns null if the string is empty or malformed.
  */
 export function parseHotkey(hotkeyStr: string): ParsedHotkey | null {
-  if (!hotkeyStr || !hotkeyStr.trim()) return null;
+  // Guard the type: imported backups can carry a non-string default_hotkey,
+  // and a TypeError here would abort the whole binding refresh.
+  if (typeof hotkeyStr !== "string" || !hotkeyStr.trim()) return null;
 
   const parts = hotkeyStr.split("+").map((p) => p.trim().toLowerCase());
   if (parts.length === 0) return null;
@@ -47,11 +49,26 @@ export function buildHotkeyBindings(mappings: HotkeyMapping[]): HotkeyBinding[] 
 }
 
 /**
+ * The event's key, normalized for matching. With Shift held, `event.key` is the
+ * shifted character ("!" instead of "1"), so a saved "Ctrl+Shift+1" would never
+ * match — recover the digit from the physical key code instead. Letters are
+ * unaffected (Shift only changes their case, which toLowerCase removes).
+ */
+function eventKey(event: KeyboardEvent): string {
+  const key = event.key.toLowerCase();
+  if (event.shiftKey && !/^[a-z0-9]$/.test(key)) {
+    const digit = /^(?:Digit|Numpad)(\d)$/.exec(event.code);
+    if (digit) return digit[1];
+  }
+  return key;
+}
+
+/**
  * Check if a KeyboardEvent matches a ParsedHotkey.
  * On Mac, "Ctrl" in the hotkey maps to Cmd (metaKey).
  */
 export function matchesEvent(event: KeyboardEvent, hotkey: ParsedHotkey): boolean {
-  if (event.key.toLowerCase() !== hotkey.key) return false;
+  if (eventKey(event) !== hotkey.key) return false;
 
   const isMac =
     navigator.platform?.startsWith("Mac") ||

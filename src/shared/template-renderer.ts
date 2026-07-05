@@ -13,6 +13,9 @@ export function renderTemplate(template: string, data: InputDataPacket): string 
   };
 
   return template.replace(/\{(\w+)\}/g, (match, key: string) => {
-    return key in vars ? vars[key] : match;
+    // hasOwnProperty, not `in`: the latter walks the prototype chain, turning
+    // literal "{constructor}" or "{toString}" in a template into stringified
+    // builtins instead of leaving them untouched.
+    return Object.prototype.hasOwnProperty.call(vars, key) ? vars[key] : match;
   });
 }

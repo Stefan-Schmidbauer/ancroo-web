@@ -6,6 +6,26 @@
  */
 
 /**
+ * Editable-host detection. An attribute-equals check ('true') misses the
+ * empty-attribute form (<div contenteditable>), inherited editability
+ * (isContentEditable covers both), and "plaintext-only" (not reflected by
+ * isContentEditable in all engines) — those would silently degrade to the
+ * clipboard fallback while still reporting success.
+ */
+function isEditable(el: unknown): el is HTMLElement {
+  if (!(el instanceof HTMLElement)) return false;
+  return el.isContentEditable || el.closest("[contenteditable='plaintext-only']") != null;
+}
+
+/** The element that owns the current window selection, or null. */
+function selectionElement(): Element | null {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return null;
+  const container = selection.getRangeAt(0).commonAncestorContainer;
+  return container instanceof Element ? container : container.parentElement;
+}
+
+/**
  * Replace the current selection or focused input value with new text.
  * Returns true if insertion was successful.
  */
@@ -13,7 +33,7 @@ export async function smartInsertText(text: string): Promise<boolean> {
   const activeElement = document.activeElement;
 
   // Try contenteditable first (rich text editors like Gmail, Docs)
-  if (activeElement && activeElement.getAttribute("contenteditable") === "true") {
+  if (isEditable(activeElement)) {
     return insertIntoContentEditable(text);
   }
 
@@ -23,17 +43,8 @@ export async function smartInsertText(text: string): Promise<boolean> {
   }
 
   // Fallback: try to replace window selection in any contenteditable ancestor
-  const selection = window.getSelection();
-  if (selection && selection.rangeCount > 0) {
-    const range = selection.getRangeAt(0);
-    const container = range.commonAncestorContainer;
-    const editableParent = (
-      container instanceof Element ? container : container.parentElement
-    )?.closest("[contenteditable='true']");
-
-    if (editableParent) {
-      return insertIntoContentEditable(text);
-    }
+  if (isEditable(selectionElement())) {
+    return insertIntoContentEditable(text);
   }
 
   // Last resort: copy to clipboard
@@ -122,14 +133,7 @@ export async function smartInsertBefore(text: string): Promise<boolean> {
   const selection = window.getSelection();
   if (selection && selection.rangeCount > 0) {
     const range = selection.getRangeAt(0);
-    const container = range.commonAncestorContainer;
-    const editableParent = (
-      container instanceof Element ? container : container.parentElement
-    )?.closest("[contenteditable='true']");
-    if (
-      editableParent ||
-      (activeElement && activeElement.getAttribute("contenteditable") === "true")
-    ) {
+    if (isEditable(selectionElement()) || isEditable(activeElement)) {
       const insertRange = document.createRange();
       insertRange.setStart(range.startContainer, range.startOffset);
       insertRange.collapse(true);
@@ -182,14 +186,7 @@ export async function smartInsertAfter(text: string): Promise<boolean> {
   const selection = window.getSelection();
   if (selection && selection.rangeCount > 0) {
     const range = selection.getRangeAt(0);
-    const container = range.commonAncestorContainer;
-    const editableParent = (
-      container instanceof Element ? container : container.parentElement
-    )?.closest("[contenteditable='true']");
-    if (
-      editableParent ||
-      (activeElement && activeElement.getAttribute("contenteditable") === "true")
-    ) {
+    if (isEditable(selectionElement()) || isEditable(activeElement)) {
       const insertRange = document.createRange();
       insertRange.setStart(range.endContainer, range.endOffset);
       insertRange.collapse(true);
