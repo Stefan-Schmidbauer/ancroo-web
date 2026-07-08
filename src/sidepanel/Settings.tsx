@@ -19,6 +19,10 @@ export function Settings({ onClose }: Props) {
   const [providers, setProviders] = useState<LLMProviderConfig[]>([]);
   const [includeKeys, setIncludeKeys] = useState(false);
   const [backupStatus, setBackupStatus] = useState<{ msg: string; ok: boolean } | null>(null);
+  // File picked for import, held until the user confirms the restore. Importing
+  // replaces all existing actions and categories (providers are merged) with no
+  // undo — that must never happen without an explicit warning.
+  const [pendingImport, setPendingImport] = useState<File | null>(null);
   // Timeout is edited in whole seconds for readability; stored as ms.
   const [timeoutSec, setTimeoutSec] = useState(
     Math.round(DEFAULT_REQUEST_TIMEOUT_MS / 1000).toString(),
@@ -62,10 +66,18 @@ export function Settings({ onClose }: Props) {
     }
   }
 
-  async function handleImport(e: Event) {
+  function handleImportPick(e: Event) {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!fileInputRef.current) return;
     fileInputRef.current.value = "";
+    if (!file) return;
+    setBackupStatus(null);
+    setPendingImport(file);
+  }
+
+  async function handleImportConfirmed() {
+    const file = pendingImport;
+    setPendingImport(null);
     if (!file) return;
     try {
       setBackupStatus(null);
@@ -75,10 +87,10 @@ export function Settings({ onClose }: Props) {
       const settings = await getSettings();
       setProviders(settings.llm_providers);
       // Grant host access for custom-URL providers (Ollama on LAN,
-      // OpenAI-compatible, …) now, while the file-picker user gesture is still
-      // active, so imported providers work on the first run instead of failing
-      // for lack of permission. Best-effort: if the gesture has expired the
-      // grant can still happen later by re-saving the provider in settings.
+      // OpenAI-compatible, …) now, while the confirm-click user gesture is
+      // still active, so imported providers work on the first run instead of
+      // failing for lack of permission. Best-effort: if the gesture has expired
+      // the grant can still happen later by re-saving the provider in settings.
       try {
         await ensureHostPermissions(
           settings.llm_providers.map((p) => p.base_url).filter((u): u is string => !!u),
@@ -161,8 +173,31 @@ export function Settings({ onClose }: Props) {
             type="file"
             accept=".json"
             class="hidden"
-            onChange={handleImport}
+            onChange={handleImportPick}
           />
+
+          {pendingImport && (
+            <div class="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+              <p class="text-xs text-amber-800 mb-2">
+                Importing "{pendingImport.name}" replaces all existing actions and categories
+                (providers are merged). This cannot be undone.
+              </p>
+              <div class="flex gap-2">
+                <button
+                  onClick={handleImportConfirmed}
+                  class="text-xs px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition"
+                >
+                  Replace and import
+                </button>
+                <button
+                  onClick={() => setPendingImport(null)}
+                  class="text-xs px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
 
           {backupStatus && (
             <p class={`text-xs mt-2 ${backupStatus.ok ? "text-green-600" : "text-red-500"}`}>
