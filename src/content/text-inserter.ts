@@ -9,8 +9,8 @@
  * Editable-host detection. An attribute-equals check ('true') misses the
  * empty-attribute form (<div contenteditable>), inherited editability
  * (isContentEditable covers both), and "plaintext-only" (not reflected by
- * isContentEditable in all engines) — those would silently degrade to the
- * clipboard fallback while still reporting success.
+ * isContentEditable in all engines) — those would make the insert fail on
+ * fields that are genuinely editable.
  */
 function isEditable(el: unknown): el is HTMLElement {
   if (!(el instanceof HTMLElement)) return false;
@@ -23,6 +23,35 @@ function selectionElement(): Element | null {
   if (!selection || selection.rangeCount === 0) return null;
   const container = selection.getRangeAt(0).commonAncestorContainer;
   return container instanceof Element ? container : container.parentElement;
+}
+
+/**
+ * True if THIS frame has a real insertion target — a focused editable/input, or
+ * a window selection inside an editable. Mirrors exactly the conditions under
+ * which smartInsert* below can insert.
+ *
+ * Used as a defensive backstop under manifest all_frames:true: the side panel
+ * targets INSERT_* at the exact frame the selection was read from, so normally
+ * only one frame is ever asked. The guard keeps a mis-addressed (or future
+ * broadcast) send from inserting into a frame with nothing to insert into.
+ *
+ * It is NOT sufficient to make a broadcast insert safe: in a frame whose
+ * <body> itself is contenteditable (common for rich-text editor iframes),
+ * document.activeElement defaults to that body, so this reports true even if
+ * the user never touched the frame. Frame-targeted sends stay the only safe
+ * delivery for inserts.
+ *
+ * Reads document.activeElement (not document.hasFocus()) so it still reports
+ * true while the side panel holds window focus, matching how the insert itself
+ * behaves.
+ */
+export function hasInsertTarget(): boolean {
+  const activeElement = document.activeElement;
+  if (isEditable(activeElement)) return true;
+  if (activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement) {
+    return true;
+  }
+  return isEditable(selectionElement());
 }
 
 /**
@@ -47,8 +76,10 @@ export async function smartInsertText(text: string): Promise<boolean> {
     return insertIntoContentEditable(text);
   }
 
-  // Last resort: copy to clipboard
-  return copyToClipboard(text);
+  // No insertion target. Report failure honestly — the side panel then shows
+  // the result and tells the user. Never silently write the clipboard instead:
+  // that would overwrite user data and misreport the insert as successful.
+  return false;
 }
 
 /** Insert text into a contenteditable element using execCommand. */
@@ -66,7 +97,11 @@ function insertIntoInput(element: HTMLInputElement | HTMLTextAreaElement, text: 
   const start = element.selectionStart ?? 0;
   const end = element.selectionEnd ?? 0;
 
-  // Use native setter to trigger React/Angular change detection
+  // Use the native value setter to trigger React/Angular change detection.
+  // Deliberate trade-off: writing .value directly bypasses the browser's edit
+  // history, so the user cannot Ctrl+Z this insertion in the field.
+  // execCommand("insertText") would preserve undo, but controlled inputs
+  // (React state) revert it — framework compatibility wins here.
   const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
     element instanceof HTMLTextAreaElement
       ? HTMLTextAreaElement.prototype
@@ -148,7 +183,8 @@ export async function smartInsertBefore(text: string): Promise<boolean> {
     }
   }
 
-  return copyToClipboard(text);
+  // No insertion target — report failure honestly (see smartInsertText).
+  return false;
 }
 
 /**
@@ -201,15 +237,6 @@ export async function smartInsertAfter(text: string): Promise<boolean> {
     }
   }
 
-  return copyToClipboard(text);
-}
-
-/** Fallback: copy text to clipboard. */
-async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
+  // No insertion target — report failure honestly (see smartInsertText).
+  return false;
 }

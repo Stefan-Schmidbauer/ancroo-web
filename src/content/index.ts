@@ -1,7 +1,12 @@
 import type { ExtensionMessage } from "@/shared/messages";
 import { matchesEvent, HOTKEY_STORAGE_KEY } from "@/shared/hotkeys";
 import type { HotkeyBinding } from "@/shared/types";
-import { smartInsertText, smartInsertBefore, smartInsertAfter } from "./text-inserter";
+import {
+  smartInsertText,
+  smartInsertBefore,
+  smartInsertAfter,
+  hasInsertTarget,
+} from "./text-inserter";
 
 // --- Injection guard ---
 // This script can arrive twice in the same isolated world: once via the
@@ -35,6 +40,36 @@ document.addEventListener(
   },
   true,
 ); // capture phase — fires before blur
+
+/**
+ * The frame's current selection text — DOM selection first, then input-field
+ * selection, with the same priority and whitespace gate as the GET_SELECTION
+ * handler, so a value read there compares cleanly against a value read here.
+ */
+function currentSelectionText(): string {
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount > 0 && sel.toString().trim().length > 0) {
+    return sel.toString();
+  }
+  return getInputSelection();
+}
+
+/**
+ * Guard for INSERT_* handlers: when the message carries expectedText and the
+ * frame's live selection no longer matches it, the user has (de)selected
+ * something since the action read its input — writing now would touch text the
+ * action never processed. Refuse and answer with reason "selection_changed" so
+ * the side panel can tell the user instead of guessing.
+ */
+function insertBlockedBySelectionChange(
+  expectedText: string | undefined,
+  sendResponse: (response: unknown) => void,
+): boolean {
+  if (expectedText == null) return false;
+  if (currentSelectionText() === expectedText) return false;
+  sendResponse({ type: "INSERT_RESULT", success: false, reason: "selection_changed" });
+  return true;
+}
 
 function getInputSelection(): string {
   const el = lastFocusedInput;
@@ -156,7 +191,10 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     //    indefinitely, so checking that first would let a stale field selection
     //    shadow the page text the user just highlighted.
     const sel = window.getSelection();
-    if (sel && sel.rangeCount > 0 && sel.toString().length > 0) {
+    // trim(): a whitespace-only DOM selection (e.g. a stray newline) is not a
+    // real selection — treating it as one would shadow a genuine input-field
+    // selection below, or trip the multi-frame ambiguity check for nothing.
+    if (sel && sel.rangeCount > 0 && sel.toString().trim().length > 0) {
       text = sel.toString();
       const container = document.createElement("div");
       container.appendChild(sel.getRangeAt(0).cloneContents());
@@ -173,6 +211,47 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
       if (text) html = text;
     }
 
+    // Whitespace-only counts as "nothing selected" — same reason as the trim
+    // above, but for input-field selections.
+    const hasSelection = text.trim().length > 0;
+
+    // With all_frames:true this handler runs in EVERY frame. A frame with a
+    // selection must not answer with it on the response channel, because the
+    // broadcast only delivers the first response — so the caller could never
+    // tell that a second frame (e.g. a left-behind selection in a read-only
+    // iframe) is also selected, and might silently pick the wrong one. Instead
+    // every selected frame posts a SELECTION_REPORT so the caller can gather
+    // ALL of them and decide: exactly one ⇒ use it, several ⇒ ambiguous, ask
+    // the user (see readSelectionAcrossFrames). Every frame — selected or not —
+    // acks the round via sendResponse: Chrome's behaviour for a broadcast that
+    // gets NO response is not well defined ("message port closed" rejections),
+    // so the ack makes the round resolve deterministically and lets the caller
+    // treat a rejection as the one thing it reliably means: no content script.
+    if (message.collectId) {
+      if (hasSelection) {
+        try {
+          void chrome.runtime
+            .sendMessage({
+              type: "SELECTION_REPORT",
+              collectId: message.collectId,
+              text,
+              html,
+              url: window.location.href,
+              title: document.title,
+            })
+            .catch(() => {
+              // No open receiver interested in this round — nothing to do.
+            });
+        } catch {
+          // Orphaned content script (extension reloaded) — nothing to report.
+        }
+      }
+      sendResponse({ type: "SELECTION_ACK" });
+      return true;
+    }
+
+    // No collectId (legacy/direct caller): keep the single-response behaviour.
+    if (!hasSelection) return false;
     sendResponse({
       type: "SELECTION_RESULT",
       text,
@@ -183,7 +262,15 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     return true;
   }
 
+  // Under all_frames:true these handlers run in every frame at once. Guarding
+  // each keeps them acting on a single frame (no double insertion, no empty
+  // top-frame shadowing page text).
+  const isTopFrame = window === window.top;
+
+  // GET_PAGE_TEXT and WRITE_CLIPBOARD have no per-frame "target": pin them to the
+  // top frame, which reproduces the exact pre-all_frames behaviour.
   if (message.type === "GET_PAGE_TEXT") {
+    if (!isTopFrame) return false;
     sendResponse({
       type: "PAGE_TEXT_RESULT",
       text: document.body.innerText,
@@ -193,7 +280,15 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
     return true;
   }
 
+  // INSERT_* arrives frame-targeted from the side panel — addressed to the
+  // exact frame the selection was read from (see applyAction), never broadcast.
+  // The guard is a defensive backstop, not what makes delivery safe (see
+  // hasInsertTarget): a frame without a genuine editable target stays silent
+  // (return false) instead of inserting, and the side panel then shows the
+  // result in the panel so it is never lost (see reportInsert in App.tsx).
   if (message.type === "INSERT_TEXT") {
+    if (!hasInsertTarget()) return false;
+    if (insertBlockedBySelectionChange(message.expectedText, sendResponse)) return true;
     smartInsertText(message.text).then((success) => {
       sendResponse({
         type: "INSERT_RESULT",
@@ -204,6 +299,8 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
   }
 
   if (message.type === "INSERT_BEFORE") {
+    if (!hasInsertTarget()) return false;
+    if (insertBlockedBySelectionChange(message.expectedText, sendResponse)) return true;
     smartInsertBefore(message.text).then((success) => {
       sendResponse({ type: "INSERT_RESULT", success });
     });
@@ -211,6 +308,8 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
   }
 
   if (message.type === "INSERT_AFTER") {
+    if (!hasInsertTarget()) return false;
+    if (insertBlockedBySelectionChange(message.expectedText, sendResponse)) return true;
     smartInsertAfter(message.text).then((success) => {
       sendResponse({ type: "INSERT_RESULT", success });
     });
@@ -218,11 +317,13 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
   }
 
   if (message.type === "WRITE_CLIPBOARD") {
+    if (!isTopFrame) return false;
     navigator.clipboard.writeText(message.text).then(
       () => sendResponse({ type: "WRITE_CLIPBOARD_RESULT", success: true }),
       () => {
         // Fallback: execCommand doesn't require user activation
         try {
+          const prevActive = document.activeElement;
           const ta = document.createElement("textarea");
           ta.value = message.text;
           ta.style.cssText = "position:fixed;opacity:0;pointer-events:none";
@@ -231,6 +332,11 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           ta.select();
           const ok = document.execCommand("copy");
           document.body.removeChild(ta);
+          // ta.focus() stole the focus — give it back so the user's caret
+          // isn't silently dropped from the field they were working in.
+          if (prevActive instanceof HTMLElement) {
+            prevActive.focus({ preventScroll: true });
+          }
           sendResponse({ type: "WRITE_CLIPBOARD_RESULT", success: ok });
         } catch {
           sendResponse({ type: "WRITE_CLIPBOARD_RESULT", success: false });

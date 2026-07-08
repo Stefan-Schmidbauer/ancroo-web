@@ -12,12 +12,15 @@ import type {
   HotkeyBinding,
 } from "@/shared/types";
 import type {
-  SelectionResultMessage,
   PageTextResultMessage,
   InsertResultMessage,
   WriteClipboardResultMessage,
 } from "@/shared/messages";
-import { sendToTab } from "@/shared/tab-messaging";
+import {
+  sendToTab,
+  readSelectionAcrossFrames,
+  AmbiguousSelectionError,
+} from "@/shared/tab-messaging";
 import { needsManualInput, friendlyError, categoryIcon } from "./utils";
 import { HistoryItem } from "./HistoryItem";
 import { SetupScreen } from "./SetupScreen";
@@ -328,14 +331,24 @@ export function App() {
   async function collectInputData(
     recipe: CollectionRecipe,
     tabId: number,
-  ): Promise<InputDataPacket> {
+  ): Promise<{ packet: InputDataPacket; sourceFrameId?: number; sourceText?: string }> {
     const packet: InputDataPacket = {};
+    // For selection inputs, remember which frame the text came from so the
+    // result is written back to THAT frame only — never broadcast, so it can't
+    // land in some other frame's focused field in the background. sourceText is
+    // the PLAIN selection text (even for selection_html): the content script
+    // compares it against the live selection before any insert, and refuses to
+    // write if the user has selected something else in the meantime.
+    let sourceFrameId: number | undefined;
+    let sourceText: string | undefined;
 
     switch (recipe.input) {
       case "selection_html": {
-        const sel = await sendToTab<SelectionResultMessage>(tabId, { type: "GET_SELECTION" });
+        const sel = await readSelectionAcrossFrames(tabId);
         packet.text = sel?.html ?? "";
         packet.context = { url: sel?.url ?? "", title: sel?.title ?? "" };
+        sourceFrameId = sel?.frameId;
+        sourceText = sel?.text;
         break;
       }
       case "page_text": {
@@ -355,50 +368,105 @@ export function App() {
       // plain selection text, so they keep working instead of running empty.
       case "selection_plain":
       default: {
-        const sel = await sendToTab<SelectionResultMessage>(tabId, { type: "GET_SELECTION" });
+        const sel = await readSelectionAcrossFrames(tabId);
         packet.text = sel?.text ?? "";
         packet.context = { url: sel?.url ?? "", title: sel?.title ?? "" };
+        sourceFrameId = sel?.frameId;
+        sourceText = sel?.text;
         break;
       }
     }
-    return packet;
+    return { packet, sourceFrameId, sourceText };
   }
 
-  async function applyAction(action: string, resultText: string, tabId: number) {
+  // Write the result to the clipboard, routed through the content script (which
+  // runs in the focused page and has an execCommand fallback for the hotkey case
+  // where the panel isn't the focused document), then a direct panel write for
+  // restricted pages without a content script. Returns false if both fail.
+  async function copyResultToClipboard(tabId: number, text: string): Promise<boolean> {
+    const res = await sendToTab<WriteClipboardResultMessage>(tabId, {
+      type: "WRITE_CLIPBOARD",
+      text,
+    }).catch(() => null);
+    if (res?.success) return true;
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // Report an insert result. On success just toast. On failure — no frame held
+  // an editable target (selection wasn't in a field, page has none, or it lives
+  // in a frame that can't be written to) — show the result in the panel and say
+  // so. Deliberately NOT a clipboard fallback: the clipboard holds user data,
+  // and overwriting it is a destructive side effect the user never asked for.
+  // The clipboard is written only when an action's output explicitly requests
+  // it (copy_to_clipboard).
+  function reportInsert(
+    res: InsertResultMessage | null | undefined,
+    text: string,
+    okMessage: string,
+  ) {
+    if (res?.success) {
+      showToast(okMessage, "success");
+      return;
+    }
+    // Clear the lingering processing toast before falling back to the panel.
+    hideToast();
+    setResultText(text);
+    showToast(
+      res?.reason === "selection_changed"
+        ? "The selection on the page changed while processing — nothing was replaced. The result is shown in the panel."
+        : "Couldn't insert into the page. The result is shown in the panel.",
+      "warning",
+    );
+  }
+
+  async function applyAction(
+    action: string,
+    resultText: string,
+    tabId: number,
+    sourceFrameId?: number,
+    sourceText?: string,
+  ) {
+    // Write inserts back to the exact frame the selection came from. Targeting a
+    // single frame (instead of broadcasting to all) guarantees the result can
+    // never land in another frame's focused field in the background — the source
+    // frame is always the intended target.
+    //
+    // If a write-back action somehow has no known source frame, we must NOT
+    // broadcast (that could modify a background frame). Show the result in the
+    // panel and tell the user instead — the page is never touched. The action
+    // editor already prevents this combination (selection-based outputs require a
+    // selection input), so this is a defensive backstop.
+    const writesBack =
+      action === "replace_selection" ||
+      action === "insert_text" ||
+      action === "insert_before" ||
+      action === "insert_after";
+    if (writesBack && sourceFrameId == null) {
+      hideToast();
+      setResultText(resultText);
+      showToast("Couldn't find where to insert this. The result is shown in the panel.", "warning");
+      return;
+    }
+
     switch (action) {
       case "replace_selection":
       case "insert_text": {
-        const res = await sendToTab<InsertResultMessage>(tabId, {
-          type: "INSERT_TEXT",
-          text: resultText,
-        });
-        showToast(
-          res?.success ? "Text inserted" : "Could not insert text",
-          res?.success ? "success" : "error",
-        );
+        const res = await sendToTab<InsertResultMessage>(
+          tabId,
+          { type: "INSERT_TEXT", text: resultText, expectedText: sourceText },
+          sourceFrameId,
+        ).catch(() => null);
+        reportInsert(res, resultText, "Text inserted");
         break;
       }
       case "clipboard":
       case "copy_to_clipboard": {
-        // A clipboard write from the side panel fails when the panel isn't the
-        // focused document — exactly the hotkey case, where the page still holds
-        // focus. So write through the content script, which runs in the focused
-        // page and has an execCommand fallback. Fall back to a direct panel write
-        // (restricted pages without a content script), then to showing the result.
-        const res = await sendToTab<WriteClipboardResultMessage>(tabId, {
-          type: "WRITE_CLIPBOARD",
-          text: resultText,
-        }).catch(() => null);
-        let ok = res?.success ?? false;
-        if (!ok) {
-          try {
-            await navigator.clipboard.writeText(resultText);
-            ok = true;
-          } catch {
-            ok = false;
-          }
-        }
-        if (ok) {
+        if (await copyResultToClipboard(tabId, resultText)) {
           showToast("Copied to clipboard", "success");
         } else {
           // Clear the lingering processing toast before falling back to the panel.
@@ -408,25 +476,21 @@ export function App() {
         break;
       }
       case "insert_before": {
-        const res = await sendToTab<InsertResultMessage>(tabId, {
-          type: "INSERT_BEFORE",
-          text: resultText,
-        });
-        showToast(
-          res?.success ? "Text inserted before selection" : "Could not insert text",
-          res?.success ? "success" : "error",
-        );
+        const res = await sendToTab<InsertResultMessage>(
+          tabId,
+          { type: "INSERT_BEFORE", text: resultText, expectedText: sourceText },
+          sourceFrameId,
+        ).catch(() => null);
+        reportInsert(res, resultText, "Text inserted before selection");
         break;
       }
       case "insert_after": {
-        const res = await sendToTab<InsertResultMessage>(tabId, {
-          type: "INSERT_AFTER",
-          text: resultText,
-        });
-        showToast(
-          res?.success ? "Text inserted after selection" : "Could not insert text",
-          res?.success ? "success" : "error",
-        );
+        const res = await sendToTab<InsertResultMessage>(
+          tabId,
+          { type: "INSERT_AFTER", text: resultText, expectedText: sourceText },
+          sourceFrameId,
+        ).catch(() => null);
+        reportInsert(res, resultText, "Text inserted after selection");
         break;
       }
       case "side_panel_only":
@@ -481,15 +545,24 @@ export function App() {
       }
 
       let inputData: InputDataPacket;
+      // Frame the selection came from — inserts are written back only to it —
+      // and the plain selection text, verified again right before any insert.
+      let sourceFrameId: number | undefined;
+      let sourceText: string | undefined;
 
       if (action.recipe) {
-        inputData = await collectInputData(action.recipe, tab.id);
+        const collected = await collectInputData(action.recipe, tab.id);
+        inputData = collected.packet;
+        sourceFrameId = collected.sourceFrameId;
+        sourceText = collected.sourceText;
       } else {
-        const response = await sendToTab<SelectionResultMessage>(tab.id, { type: "GET_SELECTION" });
+        const response = await readSelectionAcrossFrames(tab.id);
         inputData = {
           text: response?.text ?? "",
           context: { url: response?.url ?? "", title: response?.title ?? "" },
         };
+        sourceFrameId = response?.frameId;
+        sourceText = response?.text;
       }
 
       // Selection inputs need actual selected text. Bail out before the LLM call
@@ -562,13 +635,22 @@ export function App() {
           setPendingAction(null);
         }
 
-        await applyAction(outputAction, result.result.text, tab.id);
+        await applyAction(outputAction, result.result.text, tab.id, sourceFrameId, sourceText);
       } else if (result.result && !result.result.success) {
         showToast(result.result.error ?? `${action.name} failed`, "error");
       } else if (result.result?.success && !result.result.text) {
         showToast(`${action.name}: no output returned. Check your selection.`, "error");
       }
     } catch (err) {
+      // Several frames held a selection at once — don't guess which the user
+      // meant (that risks feeding/overwriting the wrong text). Ask them instead.
+      if (err instanceof AmbiguousSelectionError) {
+        showToast(
+          "More than one selection is active on the page. Make sure only the text you want is selected, then run the action again.",
+          "warning",
+        );
+        return;
+      }
       console.error("Execution failed:", err);
       showToast(friendlyError(err instanceof Error ? err.message : String(err)), "error");
     } finally {
