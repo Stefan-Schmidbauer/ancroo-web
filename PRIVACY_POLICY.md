@@ -1,6 +1,6 @@
 # Privacy Policy — Ancroo Browser Extension
 
-**Effective date:** 2026-05-31
+**Effective date:** 2026-07-08
 **Extension name:** Ancroo
 **Developer:** Stefan Schmidbauer
 
@@ -48,10 +48,12 @@ Ancroo does **not** collect:
 | `activeTab`                           | Read the active tab's URL/title and message its content script when you run an action |
 | `sidePanel`                           | Display the side panel UI                                                             |
 | `storage`                             | Store settings, actions, history, and hotkey bindings locally                         |
-| `scripting`                           | Inject content scripts for text selection and result insertion                        |
+| `scripting`                           | Re-inject the content script into tabs that were open before install/update           |
 | `clipboardWrite`                      | Copy an action result to the clipboard (copy-to-clipboard output action)              |
 | `downloads`                           | Save the backup file when you export your actions/settings to JSON                    |
 | `declarativeNetRequestWithHostAccess` | Override the Origin header for local Ollama CORS compatibility                        |
+
+The content script that reads your selection and inserts results is declared in the manifest and runs on all http/https pages and all their frames (so selections inside embedded editor frames, such as webmail composers, work too). It stays idle until you run an action or press one of your action hotkeys — it never reads or transmits page content on its own.
 
 Host permissions for known LLM APIs (OpenAI, Anthropic, Gemini, OpenRouter) and localhost are declared in the manifest. Custom provider URLs are requested via `chrome.permissions.request()` only when needed.
 
