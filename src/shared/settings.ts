@@ -1,12 +1,7 @@
 /** Extension settings stored in chrome.storage.local. */
 
 export type LLMProviderType =
-  | "openai"
-  | "anthropic"
-  | "gemini"
-  | "ollama"
-  | "openrouter"
-  | "openai-compatible";
+  "openai" | "anthropic" | "gemini" | "ollama" | "openrouter" | "openai-compatible";
 
 export interface LLMProviderConfig {
   id: string;

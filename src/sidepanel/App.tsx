@@ -609,7 +609,9 @@ export function App() {
       // history while the LLM call was in flight, and the stale closure would
       // clobber its entry.
       const stored = await chrome.storage.local.get("history");
-      const currentHistory = migrateHistory((stored.history as RawHistoryEntry[] | undefined) ?? []);
+      const currentHistory = migrateHistory(
+        (stored.history as RawHistoryEntry[] | undefined) ?? [],
+      );
       const newHistory = [entry, ...currentHistory].slice(0, 50);
       setHistory(newHistory);
       await chrome.storage.local.set({ history: newHistory });
