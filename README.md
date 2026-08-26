@@ -74,6 +74,42 @@ Then load in Chrome:
 pnpm dev
 ```
 
+### Tests
+
+Unit tests cover the LLM request path end to end — that an action's
+`temperature`, `max_tokens` and system prompt survive the trip from the editor
+form through storage to each provider's API in the shape it expects, including
+the falsy `temperature: 0`.
+
+```bash
+pnpm test          # single run
+pnpm test:watch    # watch mode
+```
+
+### Inspecting real requests
+
+`tools/echo-llm-server.mjs` is a local fake LLM server that speaks all four
+supported API dialects. It logs every request body and echoes the received
+parameters back as the model reply, so they show up directly in the side panel
+— useful for verifying end to end what the extension puts on the wire, without
+spending API credits.
+
+```bash
+node tools/echo-llm-server.mjs        # listens on http://localhost:8899
+```
+
+Then add a provider in Settings (any non-empty API key):
+
+| Provider type     | Base URL                       |
+| ----------------- | ------------------------------ |
+| OpenAI-compatible | `http://localhost:8899/v1`     |
+| Ollama            | `http://localhost:8899`        |
+| Anthropic         | `http://localhost:8899`        |
+| Gemini            | `http://localhost:8899/v1beta` |
+
+Press **Test** or **Save** on the provider afterwards — that is where the host
+permission for `localhost:8899` is granted.
+
 ## Project Structure
 
 ```
@@ -82,7 +118,10 @@ src/
 ├── content/       # Content script (text selection, insertion)
 ├── shared/        # Types, settings, LLM adapters, messages
 │   └── llm/       # LLM provider adapters (OpenAI, Anthropic, Gemini, Ollama)
-└── sidepanel/     # Side panel UI (Preact)
+├── sidepanel/     # Side panel UI (Preact)
+└── test/          # Test setup (extension API stubs)
+
+tools/             # Dev tooling (local fake LLM server)
 ```
 
 ## Contributing

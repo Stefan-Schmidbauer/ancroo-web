@@ -12,6 +12,18 @@ export default tseslint.config(
     },
   },
   {
+    // Dev tooling runs on Node, not in the browser/extension context.
+    files: ["tools/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        Buffer: "readonly",
+        URL: "readonly",
+        console: "readonly",
+        process: "readonly",
+      },
+    },
+  },
+  {
     ignores: ["dist/", "node_modules/"],
   },
 );
