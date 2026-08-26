@@ -41,3 +41,25 @@ export function categoryIcon(
   if (match) return match.icon;
   return action.category_icon ?? "🔧";
 }
+
+/** Parse an optional numeric form field.
+ *
+ *  Number inputs hand back strings, and "not filled in" has to stay
+ *  distinguishable from a real value: an empty field means "let the provider
+ *  decide" and must yield undefined, while "0" is a legitimate setting that a
+ *  truthiness check would silently discard. Unparseable input is treated as
+ *  empty — letting NaN through would serialize to `null` in the request body
+ *  and make the API reject the call.
+ */
+export function parseOptionalFloat(value: string): number | undefined {
+  if (value.trim() === "") return undefined;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/** Integer counterpart of {@link parseOptionalFloat} (e.g. for max_tokens). */
+export function parseOptionalInt(value: string): number | undefined {
+  if (value.trim() === "") return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}

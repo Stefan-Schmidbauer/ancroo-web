@@ -6,6 +6,7 @@ import type { LLMProviderConfig } from "@/shared/settings";
 import { fetchModels, type ModelInfo } from "@/shared/llm/models";
 import { parseHotkey } from "@/shared/hotkeys";
 import { slugify } from "@/shared/slug";
+import { parseOptionalFloat, parseOptionalInt } from "./utils";
 
 const INPUT_SOURCES: { value: CollectionRecipe["input"]; label: string }[] = [
   { value: "selection_html", label: "Selection (formatted)" },
@@ -194,8 +195,8 @@ export function ActionEditor({
       provider_id: providerId,
       model,
       system_prompt: systemPrompt.trim() || undefined,
-      temperature: temperature ? parseFloat(temperature) : undefined,
-      max_tokens: maxTokens ? parseInt(maxTokens, 10) : undefined,
+      temperature: parseOptionalFloat(temperature),
+      max_tokens: parseOptionalInt(maxTokens),
     };
     onSave(saved);
   }
