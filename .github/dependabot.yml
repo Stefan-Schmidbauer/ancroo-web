@@ -4,3 +4,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Default is 5. Lockfile conflicts mean these PRs are applied in batches
+    # locally rather than merged one by one, so the queue needs headroom --
+    # at the default, a stalled queue silently blocks all further updates,
+    # security ones included.
+    open-pull-requests-limit: 10
